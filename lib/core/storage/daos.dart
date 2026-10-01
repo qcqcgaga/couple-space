@@ -3,6 +3,7 @@ import 'package:drift/drift.dart';
 import '../models/image.dart';
 import '../models/note.dart';
 import '../models/note_edit.dart';
+import '../sync/chunk_bitmap.dart';
 import 'database.dart';
 import 'mappers.dart';
 
@@ -113,6 +114,15 @@ class ImagesDao {
     return row == null ? null : ImageMapper.toModel(row);
   }
 
+  Future<List<ImageMeta>> allImages({bool includeDeleted = false}) async {
+    final query = db.select(db.images);
+    if (!includeDeleted) {
+      query.where((t) => t.deleted.equals(false));
+    }
+    final rows = await query.get();
+    return [for (final row in rows) ImageMapper.toModel(row)];
+  }
+
   Future<List<ImageMeta>> imagesForNote(String noteId) async {
     final rows = await (db.select(db.images)..where((t) => t.noteId.equals(noteId)))
         .get();
@@ -136,12 +146,56 @@ class ImagesDao {
     required String status,
     required int totalChunks,
     String? chunkBitmap,
+    int? chunkSize,
   }) async {
     await (db.update(db.images)..where((t) => t.id.equals(imageId))).write(
       ImagesCompanion(
         syncStatus: Value(status),
         totalChunks: Value(totalChunks),
         chunkBitmap: Value(chunkBitmap),
+        chunkSize: chunkSize == null ? const Value.absent() : Value(chunkSize),
+      ),
+    );
+  }
+
+  /// 标记某一块已收：更新位图与分块配置，供断点续传。
+  Future<void> markChunkReceived(
+    String imageId, {
+    required int seq,
+    required int chunkSize,
+    required int totalChunks,
+  }) async {
+    final row = await (db.select(db.images)..where((t) => t.id.equals(imageId)))
+        .getSingleOrNull();
+    if (row == null) return;
+    final bitmap = ChunkBitmap.parse(row.chunkBitmap, totalChunks);
+    bitmap[seq] = true;
+    final done = ChunkBitmap.isComplete(bitmap);
+    await (db.update(db.images)..where((t) => t.id.equals(imageId))).write(
+      ImagesCompanion(
+        syncStatus: Value(done ? 'done' : 'partial'),
+        totalChunks: Value(totalChunks),
+        chunkSize: Value(chunkSize),
+        chunkBitmap: Value(ChunkBitmap.toText(bitmap)),
+      ),
+    );
+  }
+
+  Future<void> markDone(String imageId, {required int totalChunks}) async {
+    await (db.update(db.images)..where((t) => t.id.equals(imageId))).write(
+      ImagesCompanion(
+        syncStatus: const Value('done'),
+        totalChunks: Value(totalChunks),
+        chunkBitmap: Value(ChunkBitmap.allOneText(totalChunks)),
+      ),
+    );
+  }
+
+  Future<void> markFailed(String imageId, {required String error}) async {
+    await (db.update(db.images)..where((t) => t.id.equals(imageId))).write(
+      ImagesCompanion(
+        syncStatus: const Value('failed'),
+        chunkBitmap: const Value(null),
       ),
     );
   }
@@ -160,6 +214,84 @@ class ImagesDao {
         lwDevice: Value(deviceId),
       ),
     );
+  }
+}
+
+/// 图片传输队列 DAO：待发送图片按（对端, 图片）持久化。
+class ImageTransfersDao {
+  ImageTransfersDao(this.db);
+
+  final AppDatabase db;
+
+  Future<ImageTransferRow?> find(String peerId, String imageId) async {
+    return (db.select(db.imageTransfers)
+          ..where((t) => t.peerId.equals(peerId) & t.imageId.equals(imageId)))
+        .getSingleOrNull();
+  }
+
+  Future<List<ImageTransferRow>> pendingFor(String peerId) async {
+    return (db.select(db.imageTransfers)
+          ..where((t) => t.peerId.equals(peerId) & t.status.isIn(['queued', 'transferring'])))
+        .get();
+  }
+
+  Future<List<ImageTransferRow>> allPending() async {
+    return (db.select(db.imageTransfers)
+          ..where((t) => t.status.isIn(['queued', 'transferring'])))
+        .get();
+  }
+
+  Future<void> enqueue(
+    String peerId,
+    String imageId, {
+    required int chunkSize,
+    required int totalChunks,
+    String? sentBitmap,
+  }) async {
+    await db.into(db.imageTransfers).insertOnConflictUpdate(
+          ImageTransfersCompanion(
+            peerId: Value(peerId),
+            imageId: Value(imageId),
+            status: const Value('queued'),
+            chunkSize: Value(chunkSize),
+            totalChunks: Value(totalChunks),
+            sentBitmap: Value(sentBitmap),
+            sentBytes: const Value(0),
+            updatedAt: Value(DateTime.now().millisecondsSinceEpoch),
+          ),
+        );
+  }
+
+  Future<void> updateProgress(
+    String peerId,
+    String imageId, {
+    String? status,
+    String? sentBitmap,
+    int? sentBytes,
+    String? error,
+  }) async {
+    await (db.update(db.imageTransfers)
+          ..where((t) => t.peerId.equals(peerId) & t.imageId.equals(imageId)))
+        .write(
+          ImageTransfersCompanion(
+            status: status == null ? const Value.absent() : Value(status),
+            sentBitmap: sentBitmap == null ? const Value.absent() : Value(sentBitmap),
+            sentBytes: sentBytes == null ? const Value.absent() : Value(sentBytes),
+            error: error == null ? const Value.absent() : Value(error),
+            updatedAt: Value(DateTime.now().millisecondsSinceEpoch),
+          ),
+        );
+  }
+
+  Future<void> remove(String peerId, String imageId) async {
+    await (db.delete(db.imageTransfers)
+          ..where((t) => t.peerId.equals(peerId) & t.imageId.equals(imageId)))
+        .go();
+  }
+
+  Future<void> removeForImage(String imageId) async {
+    await (db.delete(db.imageTransfers)..where((t) => t.imageId.equals(imageId)))
+        .go();
   }
 }
 

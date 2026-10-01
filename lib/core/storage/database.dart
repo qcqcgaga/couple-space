@@ -1,5 +1,4 @@
 import 'package:drift/drift.dart';
-import 'package:drift_flutter/drift_flutter.dart';
 
 part 'database.g.dart';
 
@@ -86,6 +85,9 @@ class Images extends Table {
   /// 分块总数（续传需要）。
   IntColumn get totalChunks => integer().withDefault(const Constant(0))();
 
+  /// 分块大小（字节）：接收方写文件与续传定位依赖它，必须与发送方一致。
+  IntColumn get chunkSize => integer().withDefault(const Constant(0))();
+
   /// 图片级 LWW 版本（添加/删除各自独立）。
   IntColumn get lwTs => integer().withDefault(const Constant(0))();
   TextColumn get lwDevice => text().withDefault(const Constant(''))();
@@ -141,6 +143,44 @@ class SyncState extends Table {
   Set<Column> get primaryKey => {key};
 }
 
+/// 图片传输队列：待发送图片按（对端, 图片）持久化，App 重启不丢。
+///
+/// 断点续传以“接收方位图”（images.chunkBitmap）为准；本表保存发送意图、
+/// 分块配置与发送进度，供重启后恢复队列与 UI 展示进度。
+@DataClassName('ImageTransferRow')
+class ImageTransfers extends Table {
+  @override
+  String get tableName => 'image_transfers';
+
+  /// 对端设备 ID（图片发往谁）。
+  TextColumn get peerId => text()();
+  TextColumn get imageId => text()();
+
+  /// queued / transferring / done / failed。
+  TextColumn get status => text().withDefault(const Constant('queued'))();
+
+  /// 分块大小（字节）。
+  IntColumn get chunkSize => integer().withDefault(const Constant(0))();
+
+  /// 总块数。
+  IntColumn get totalChunks => integer().withDefault(const Constant(0))();
+
+  /// 已发送块位图（逗号分隔 0/1），进度展示用（续传以接收方位图为准）。
+  TextColumn get sentBitmap => text().nullable()();
+
+  /// 已发送字节数。
+  IntColumn get sentBytes => integer().withDefault(const Constant(0))();
+
+  /// 更新时间（epoch 毫秒）。
+  IntColumn get updatedAt => integer().withDefault(const Constant(0))();
+
+  /// 失败原因（status == failed 时有值）。
+  TextColumn get error => text().nullable()();
+
+  @override
+  Set<Column> get primaryKey => {peerId, imageId};
+}
+
 /// 本地身份：本机设备 ID 与身份密钥对（X25519，base64 保存）。
 @DataClassName('LocalIdentityRow')
 class LocalIdentity extends Table {
@@ -166,6 +206,7 @@ class LocalIdentity extends Table {
     Peers,
     SyncState,
     LocalIdentity,
+    ImageTransfers,
   ],
 )
 class AppDatabase extends _$AppDatabase {
@@ -173,10 +214,4 @@ class AppDatabase extends _$AppDatabase {
 
   @override
   int get schemaVersion => 1;
-
-  /// Flutter 运行时连接：drift_flutter 负责在各平台定位数据库文件
-  /// 并加载随应用打包的 SQLite（Android/iOS 由 sqlite3_flutter_libs 提供）。
-  factory AppDatabase.open({String dbName = 'couple_space'}) {
-    return AppDatabase(driftDatabase(name: dbName));
-  }
 }

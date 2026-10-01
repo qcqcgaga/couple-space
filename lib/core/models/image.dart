@@ -15,6 +15,7 @@ class ImageMeta {
     this.syncStatus = 'pending',
     this.chunkBitmap,
     this.totalChunks = 0,
+    this.chunkSize = 0,
     this.lwTs = 0,
     this.lwDevice = '',
   });
@@ -39,6 +40,9 @@ class ImageMeta {
   /// 分块总数。
   final int totalChunks;
 
+  /// 分块大小（字节）：写文件与续传定位依赖它，需与发送方一致。
+  final int chunkSize;
+
   /// 图片级 LWW 版本。
   final int lwTs;
   final String lwDevice;
@@ -54,6 +58,7 @@ class ImageMeta {
     String? syncStatus,
     String? chunkBitmap,
     int? totalChunks,
+    int? chunkSize,
     int? lwTs,
     String? lwDevice,
   }) {
@@ -69,6 +74,7 @@ class ImageMeta {
       syncStatus: syncStatus ?? this.syncStatus,
       chunkBitmap: chunkBitmap ?? this.chunkBitmap,
       totalChunks: totalChunks ?? this.totalChunks,
+      chunkSize: chunkSize ?? this.chunkSize,
       lwTs: lwTs ?? this.lwTs,
       lwDevice: lwDevice ?? this.lwDevice,
     );

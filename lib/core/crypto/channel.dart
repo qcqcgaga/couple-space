@@ -52,13 +52,19 @@ class EncryptedChannel {
     if (_listening) return;
     _listening = true;
     connection.incoming.listen(
-      _onData,
+      feed,
       onError: (Object e, StackTrace s) {
         _incoming.addError(e, s);
       },
       onDone: () => _incoming.close(),
     );
   }
+
+  /// 由外部（如同步引擎的单字节流监听器）喂入密文字节。
+  ///
+  /// 引擎需要在同一连接上先按明文协议帧完成握手、再无缝升级为加密通道，
+  /// 因此不能由本类独占底层连接监听（dart:io Socket 是单订阅流）。
+  Future<void> feed(List<int> chunk) => _onData(chunk);
 
   Future<void> _onData(List<int> chunk) async {
     _buffer.add(chunk);

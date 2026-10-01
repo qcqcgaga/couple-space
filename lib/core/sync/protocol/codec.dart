@@ -136,6 +136,12 @@ class FrameDecoder {
   }
 
   bool get hasPartialData => _buffer.length > 0;
+
+  /// 取走缓冲区内尚未解析成完整帧的字节（供握手→加密切换时移交密文）。
+  Uint8List takeRemaining() {
+    final bytes = _buffer.takeBytes();
+    return Uint8List.fromList(bytes);
+  }
 }
 
 /// 帧通道：把 [Connection] 的字节流转换为 [SyncFrame] 流。

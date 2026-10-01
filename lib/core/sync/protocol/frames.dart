@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'dart:typed_data';
 
+import '../../models/image.dart';
 import '../../models/note.dart';
 
 /// 帧类型：线格式为 `[4 字节大端长度][1 字节类型][载荷]`。
@@ -90,6 +91,7 @@ final class AuthFrame extends SyncFrame {
     required this.deviceId,
     required this.sessionPublicKey,
     this.handshakeNonce,
+    this.paired = true,
   });
 
   final String deviceId;
@@ -100,6 +102,9 @@ final class AuthFrame extends SyncFrame {
   /// 随机数（base64），绑定会话，防止重放。
   final String? handshakeNonce;
 
+  /// 发送方是否已在本机白名单中保存过对端设备（false 表示需要配对）。
+  final bool paired;
+
   @override
   SyncFrameType get type => SyncFrameType.auth;
 
@@ -108,6 +113,7 @@ final class AuthFrame extends SyncFrame {
         'deviceId': deviceId,
         'sessionPublicKey': sessionPublicKey,
         'handshakeNonce': handshakeNonce,
+        'paired': paired,
       };
 }
 
@@ -149,6 +155,7 @@ class RecordVersion {
     required this.updatedAt,
     required this.deviceId,
     required this.deleted,
+    this.kind = 'note',
   });
 
   final String recordId;
@@ -156,11 +163,15 @@ class RecordVersion {
   final String deviceId;
   final bool deleted;
 
+  /// 记录类型：note（笔记）/ image（图片），默认 note。
+  final String kind;
+
   Map<String, Object?> toJson() => {
         'recordId': recordId,
         'updatedAt': updatedAt,
         'deviceId': deviceId,
         'deleted': deleted,
+        'kind': kind,
       };
 
   factory RecordVersion.fromJson(Map<String, Object?> json) => RecordVersion(
@@ -168,6 +179,7 @@ class RecordVersion {
         updatedAt: json['updatedAt']! as int,
         deviceId: json['deviceId']! as String,
         deleted: json['deleted']! as bool,
+        kind: json['kind'] as String? ?? 'note',
       );
 }
 
@@ -279,6 +291,10 @@ class ImagePayload {
     this.deletedBy,
     this.lwTs = 0,
     this.lwDevice = '',
+    this.syncStatus = '',
+    this.totalChunks = 0,
+    this.chunkSize = 0,
+    this.chunkBitmap,
   });
 
   final String id;
@@ -292,6 +308,30 @@ class ImagePayload {
   final int lwTs;
   final String lwDevice;
 
+  /// 发送方本地的传输进度（用于续传握手）。
+  final String syncStatus;
+  final int totalChunks;
+  final int chunkSize;
+  final String? chunkBitmap;
+
+  /// 从领域模型构造协议载荷。
+  factory ImagePayload.fromMeta(ImageMeta image) => ImagePayload(
+        id: image.id,
+        noteId: image.noteId,
+        fileName: image.fileName,
+        sha256: image.sha256,
+        size: image.size,
+        deleted: image.deleted,
+        deletedAt: image.deletedAt,
+        deletedBy: image.deletedBy,
+        lwTs: image.lwTs,
+        lwDevice: image.lwDevice,
+        syncStatus: image.syncStatus,
+        totalChunks: image.totalChunks,
+        chunkSize: image.chunkSize,
+        chunkBitmap: image.chunkBitmap,
+      );
+
   Map<String, Object?> toJson() => {
         'id': id,
         'noteId': noteId,
@@ -303,6 +343,10 @@ class ImagePayload {
         'deletedBy': deletedBy,
         'lwTs': lwTs,
         'lwDevice': lwDevice,
+        'syncStatus': syncStatus,
+        'totalChunks': totalChunks,
+        'chunkSize': chunkSize,
+        'chunkBitmap': chunkBitmap,
       };
 
   factory ImagePayload.fromJson(Map<String, Object?> json) => ImagePayload(
@@ -318,6 +362,10 @@ class ImagePayload {
         deletedBy: json['deletedBy'] as String?,
         lwTs: json['lwTs'] as int? ?? 0,
         lwDevice: json['lwDevice'] as String? ?? '',
+        syncStatus: json['syncStatus'] as String? ?? '',
+        totalChunks: json['totalChunks'] as int? ?? 0,
+        chunkSize: json['chunkSize'] as int? ?? 0,
+        chunkBitmap: json['chunkBitmap'] as String?,
       );
 }
 
@@ -444,6 +492,7 @@ SyncFrame frameFromJson(SyncFrameType type, Map<String, Object?> json) {
         deviceId: json['deviceId']! as String,
         sessionPublicKey: json['sessionPublicKey']! as String,
         handshakeNonce: json['handshakeNonce'] as String?,
+        paired: json['paired'] as bool? ?? true,
       );
     case SyncFrameType.pair:
       return PairFrame(

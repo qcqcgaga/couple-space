@@ -140,3 +140,84 @@
   - images 表补充 `lwTs/lwDevice/totalChunks`（图片级 LWW 与续传需要）；
     新增 `local_identity` 表保存本机设备 ID 与身份密钥对（base64）。
 - 后果：docs/02 §7 表草案在实现时做了字段补充，均为实现细节，不改变架构。
+
+## ADR-017 同步引擎连接封装与明文→密文升级
+
+- 日期：2026-10-01 | 状态：Accepted
+- 背景：docs/02 §4.1 要求“先明文握手、再协商会话密钥、随后全程加密”，但
+  dart:io Socket 是单订阅流，不能“明文、密文各监听一次”。
+- 决策：
+  - 引擎侧用 `SyncConnection` 统一消费底层字节：握手阶段解明文协议帧；
+    收到对端最终 Ack 时同步标记 `finishHandshake()`，同一数据块中握手帧
+    之后的剩余字节按密文暂存；会话密钥派生完成后 `upgrade()` 建立加密通道
+    并冲刷暂存密文。
+  - 升级前先把会话阶段切到 sync：`upgrade()` 冲刷密文时会解码出对端已
+    加密的 VersionMap，必须按同步阶段派发，否则帧会被握手分发器忽略。
+  - 连接层发送串行化：驱动协程与帧处理器可能并发发送（VersionMap 与
+    NoteDelta），Windows 下 Socket.flush() 并发会报 “StreamSink is bound
+    to a stream”。
+- 后果：TCP/BLE 同一套握手与升级逻辑；真实 TCP 下可稳定跑双进程同步。
+
+## ADR-018 VersionMap 差异策略：摘要不同即双向推送完整记录
+
+- 日期：2026-10-01 | 状态：Accepted
+- 背景：docs/02 §4.2 写“向对方请求缺失或更新的记录”。但字段级 LWW 下，
+  单条记录的摘要（最大字段版本）较旧的一方可能仍持有较新的字段写入；
+  若只按“较新摘要单向拉取”，这些字段更新会被漏掉。
+- 决策：VersionMap 比对以“摘要不同（ts / deviceId / deleted 任一不同）
+  即双向推送完整记录（携带全字段版本）”为准；接收方仍按字段级 LWW 合并。
+- 后果：对家庭场景的小数据量完全够用；协议不新增 Request 帧，实现与
+  docs/02 的帧清单保持一致。
+
+## ADR-019 图片传输队列持久化与续传语义
+
+- 日期：2026-10-01 | 状态：Accepted
+- 背景：docs/02 §4.4/§7 要求传输队列持久化、按已收块位图续传。
+- 决策：
+  - 新增 `image_transfers` 表（peerId+imageId 主键）：保存发送意图、分块
+    配置、已发块位图与错误信息，App 重启不丢。
+  - `images` 表补充 `chunkSize` 列：接收方写文件与续传定位必须知道块大小，
+    与发送方不一致时重置位图整图重传。
+  - 续传以“接收方 images.chunkBitmap”为权威：发送方只补发接收方位图缺失的
+    块；发送方 sentBitmap 仅作进度展示。本地图片不完整时无条件推送
+    ImageMeta（携带本地位图），触发对端补发，覆盖“摘要相同但文件残缺”的
+    重连场景。
+  - 收齐全部块后校验 sha256；失败则标记 failed 并整图重传。
+  - `ImageMeta.copyWith` 的 `?? this.xxx` 模式无法置空字段，合并不再使用
+    copyWith 清位图，改为直接构造新对象。
+- 后果：图片与笔记独立同步；传输中断/重启后从缺失块继续，不重复传输。
+
+## ADR-020 同步存储端口：SyncStorage（drift + 内存实现）
+
+- 日期：2026-10-01 | 状态：Accepted
+- 背景：双进程探针需要真实引擎跑完整同步，但 `dart run` 并发进程会争抢
+  `.dart_tool/lib/sqlite3.dll`（Windows 文件锁），且 AOT 无法内嵌 sqlite3
+  原生资产。
+- 决策：引擎不直接依赖 drift DAO，改为依赖 `SyncStorage` 端口：
+  - `DriftSyncStorage`：生产实现，复用既有 DAO 与 NoteStore（LWW+墓碑），
+    零逻辑重复；
+  - `MemorySyncStorage`：纯内存实现，供双进程探针/单元测试，进程不加载
+    sqlite3，彻底规避原生资产冲突。
+- 后果：探针进程可用纯 Dart 跑完整引擎（mDNS + TCP + 加密 + 分块传输）；
+  引擎测试仍覆盖 drift 生产存储路径。
+
+## ADR-021 协议帧补充：Auth.paired、RecordVersion.kind、ImagePayload 进度
+
+- 日期：2026-10-01 | 状态：Accepted
+- 决策（均为向后兼容的附加字段，默认值与旧实现一致）：
+  - `AuthFrame.paired`：告知对端本机白名单中是否有该设备；任一方未配对即
+    进入配对流程，避免“一端已配对、另一端丢白名单”时握手死锁。
+  - `RecordVersion.kind`（note/image）：VersionMap 区分笔记与图片摘要。
+  - `ImagePayload.syncStatus/totalChunks/chunkSize/chunkBitmap`：ImageMeta
+    携带发送方本地传输进度，支撑续传握手。
+- 后果：docs/02 §4.3 帧清单不变，仅字段扩充。
+
+## ADR-022 双进程同步探针（sync-server / sync-client）
+
+- 日期：2026-10-01 | 状态：Accepted
+- 决策：扩展 `tool/probe.dart`：`sync-server`/`sync-client` 模式用真实
+  mDNS + TCP 建立连接，两端各自运行完整 `SyncEngine`（配对、加密、笔记与
+  图片分块同步），并接入 `flutter test`（`test/transports/
+  two_process_sync_test.dart`）。
+- 后果：Windows 本机可自动化验证“发现→握手→加密→增量→图片断点续传”
+  全链路；探针输出使用串行化写队列避免 Windows 重定向下 stdout 竞态。

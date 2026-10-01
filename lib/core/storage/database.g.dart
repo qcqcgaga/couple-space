@@ -1362,6 +1362,18 @@ class $ImagesTable extends Images with TableInfo<$ImagesTable, ImageRow> {
     requiredDuringInsert: false,
     defaultValue: const Constant(0),
   );
+  static const VerificationMeta _chunkSizeMeta = const VerificationMeta(
+    'chunkSize',
+  );
+  @override
+  late final GeneratedColumn<int> chunkSize = GeneratedColumn<int>(
+    'chunk_size',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(0),
+  );
   static const VerificationMeta _lwTsMeta = const VerificationMeta('lwTs');
   @override
   late final GeneratedColumn<int> lwTs = GeneratedColumn<int>(
@@ -1397,6 +1409,7 @@ class $ImagesTable extends Images with TableInfo<$ImagesTable, ImageRow> {
     syncStatus,
     chunkBitmap,
     totalChunks,
+    chunkSize,
     lwTs,
     lwDevice,
   ];
@@ -1491,6 +1504,12 @@ class $ImagesTable extends Images with TableInfo<$ImagesTable, ImageRow> {
         ),
       );
     }
+    if (data.containsKey('chunk_size')) {
+      context.handle(
+        _chunkSizeMeta,
+        chunkSize.isAcceptableOrUnknown(data['chunk_size']!, _chunkSizeMeta),
+      );
+    }
     if (data.containsKey('lw_ts')) {
       context.handle(
         _lwTsMeta,
@@ -1556,6 +1575,10 @@ class $ImagesTable extends Images with TableInfo<$ImagesTable, ImageRow> {
         DriftSqlType.int,
         data['${effectivePrefix}total_chunks'],
       )!,
+      chunkSize: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}chunk_size'],
+      )!,
       lwTs: attachedDatabase.typeMapping.read(
         DriftSqlType.int,
         data['${effectivePrefix}lw_ts'],
@@ -1592,6 +1615,9 @@ class ImageRow extends DataClass implements Insertable<ImageRow> {
   /// 分块总数（续传需要）。
   final int totalChunks;
 
+  /// 分块大小（字节）：接收方写文件与续传定位依赖它，必须与发送方一致。
+  final int chunkSize;
+
   /// 图片级 LWW 版本（添加/删除各自独立）。
   final int lwTs;
   final String lwDevice;
@@ -1607,6 +1633,7 @@ class ImageRow extends DataClass implements Insertable<ImageRow> {
     required this.syncStatus,
     this.chunkBitmap,
     required this.totalChunks,
+    required this.chunkSize,
     required this.lwTs,
     required this.lwDevice,
   });
@@ -1630,6 +1657,7 @@ class ImageRow extends DataClass implements Insertable<ImageRow> {
       map['chunk_bitmap'] = Variable<String>(chunkBitmap);
     }
     map['total_chunks'] = Variable<int>(totalChunks);
+    map['chunk_size'] = Variable<int>(chunkSize);
     map['lw_ts'] = Variable<int>(lwTs);
     map['lw_device'] = Variable<String>(lwDevice);
     return map;
@@ -1654,6 +1682,7 @@ class ImageRow extends DataClass implements Insertable<ImageRow> {
           ? const Value.absent()
           : Value(chunkBitmap),
       totalChunks: Value(totalChunks),
+      chunkSize: Value(chunkSize),
       lwTs: Value(lwTs),
       lwDevice: Value(lwDevice),
     );
@@ -1676,6 +1705,7 @@ class ImageRow extends DataClass implements Insertable<ImageRow> {
       syncStatus: serializer.fromJson<String>(json['syncStatus']),
       chunkBitmap: serializer.fromJson<String?>(json['chunkBitmap']),
       totalChunks: serializer.fromJson<int>(json['totalChunks']),
+      chunkSize: serializer.fromJson<int>(json['chunkSize']),
       lwTs: serializer.fromJson<int>(json['lwTs']),
       lwDevice: serializer.fromJson<String>(json['lwDevice']),
     );
@@ -1695,6 +1725,7 @@ class ImageRow extends DataClass implements Insertable<ImageRow> {
       'syncStatus': serializer.toJson<String>(syncStatus),
       'chunkBitmap': serializer.toJson<String?>(chunkBitmap),
       'totalChunks': serializer.toJson<int>(totalChunks),
+      'chunkSize': serializer.toJson<int>(chunkSize),
       'lwTs': serializer.toJson<int>(lwTs),
       'lwDevice': serializer.toJson<String>(lwDevice),
     };
@@ -1712,6 +1743,7 @@ class ImageRow extends DataClass implements Insertable<ImageRow> {
     String? syncStatus,
     Value<String?> chunkBitmap = const Value.absent(),
     int? totalChunks,
+    int? chunkSize,
     int? lwTs,
     String? lwDevice,
   }) => ImageRow(
@@ -1726,6 +1758,7 @@ class ImageRow extends DataClass implements Insertable<ImageRow> {
     syncStatus: syncStatus ?? this.syncStatus,
     chunkBitmap: chunkBitmap.present ? chunkBitmap.value : this.chunkBitmap,
     totalChunks: totalChunks ?? this.totalChunks,
+    chunkSize: chunkSize ?? this.chunkSize,
     lwTs: lwTs ?? this.lwTs,
     lwDevice: lwDevice ?? this.lwDevice,
   );
@@ -1748,6 +1781,7 @@ class ImageRow extends DataClass implements Insertable<ImageRow> {
       totalChunks: data.totalChunks.present
           ? data.totalChunks.value
           : this.totalChunks,
+      chunkSize: data.chunkSize.present ? data.chunkSize.value : this.chunkSize,
       lwTs: data.lwTs.present ? data.lwTs.value : this.lwTs,
       lwDevice: data.lwDevice.present ? data.lwDevice.value : this.lwDevice,
     );
@@ -1767,6 +1801,7 @@ class ImageRow extends DataClass implements Insertable<ImageRow> {
           ..write('syncStatus: $syncStatus, ')
           ..write('chunkBitmap: $chunkBitmap, ')
           ..write('totalChunks: $totalChunks, ')
+          ..write('chunkSize: $chunkSize, ')
           ..write('lwTs: $lwTs, ')
           ..write('lwDevice: $lwDevice')
           ..write(')'))
@@ -1786,6 +1821,7 @@ class ImageRow extends DataClass implements Insertable<ImageRow> {
     syncStatus,
     chunkBitmap,
     totalChunks,
+    chunkSize,
     lwTs,
     lwDevice,
   );
@@ -1804,6 +1840,7 @@ class ImageRow extends DataClass implements Insertable<ImageRow> {
           other.syncStatus == this.syncStatus &&
           other.chunkBitmap == this.chunkBitmap &&
           other.totalChunks == this.totalChunks &&
+          other.chunkSize == this.chunkSize &&
           other.lwTs == this.lwTs &&
           other.lwDevice == this.lwDevice);
 }
@@ -1820,6 +1857,7 @@ class ImagesCompanion extends UpdateCompanion<ImageRow> {
   final Value<String> syncStatus;
   final Value<String?> chunkBitmap;
   final Value<int> totalChunks;
+  final Value<int> chunkSize;
   final Value<int> lwTs;
   final Value<String> lwDevice;
   final Value<int> rowid;
@@ -1835,6 +1873,7 @@ class ImagesCompanion extends UpdateCompanion<ImageRow> {
     this.syncStatus = const Value.absent(),
     this.chunkBitmap = const Value.absent(),
     this.totalChunks = const Value.absent(),
+    this.chunkSize = const Value.absent(),
     this.lwTs = const Value.absent(),
     this.lwDevice = const Value.absent(),
     this.rowid = const Value.absent(),
@@ -1851,6 +1890,7 @@ class ImagesCompanion extends UpdateCompanion<ImageRow> {
     this.syncStatus = const Value.absent(),
     this.chunkBitmap = const Value.absent(),
     this.totalChunks = const Value.absent(),
+    this.chunkSize = const Value.absent(),
     this.lwTs = const Value.absent(),
     this.lwDevice = const Value.absent(),
     this.rowid = const Value.absent(),
@@ -1871,6 +1911,7 @@ class ImagesCompanion extends UpdateCompanion<ImageRow> {
     Expression<String>? syncStatus,
     Expression<String>? chunkBitmap,
     Expression<int>? totalChunks,
+    Expression<int>? chunkSize,
     Expression<int>? lwTs,
     Expression<String>? lwDevice,
     Expression<int>? rowid,
@@ -1887,6 +1928,7 @@ class ImagesCompanion extends UpdateCompanion<ImageRow> {
       if (syncStatus != null) 'sync_status': syncStatus,
       if (chunkBitmap != null) 'chunk_bitmap': chunkBitmap,
       if (totalChunks != null) 'total_chunks': totalChunks,
+      if (chunkSize != null) 'chunk_size': chunkSize,
       if (lwTs != null) 'lw_ts': lwTs,
       if (lwDevice != null) 'lw_device': lwDevice,
       if (rowid != null) 'rowid': rowid,
@@ -1905,6 +1947,7 @@ class ImagesCompanion extends UpdateCompanion<ImageRow> {
     Value<String>? syncStatus,
     Value<String?>? chunkBitmap,
     Value<int>? totalChunks,
+    Value<int>? chunkSize,
     Value<int>? lwTs,
     Value<String>? lwDevice,
     Value<int>? rowid,
@@ -1921,6 +1964,7 @@ class ImagesCompanion extends UpdateCompanion<ImageRow> {
       syncStatus: syncStatus ?? this.syncStatus,
       chunkBitmap: chunkBitmap ?? this.chunkBitmap,
       totalChunks: totalChunks ?? this.totalChunks,
+      chunkSize: chunkSize ?? this.chunkSize,
       lwTs: lwTs ?? this.lwTs,
       lwDevice: lwDevice ?? this.lwDevice,
       rowid: rowid ?? this.rowid,
@@ -1963,6 +2007,9 @@ class ImagesCompanion extends UpdateCompanion<ImageRow> {
     if (totalChunks.present) {
       map['total_chunks'] = Variable<int>(totalChunks.value);
     }
+    if (chunkSize.present) {
+      map['chunk_size'] = Variable<int>(chunkSize.value);
+    }
     if (lwTs.present) {
       map['lw_ts'] = Variable<int>(lwTs.value);
     }
@@ -1989,6 +2036,7 @@ class ImagesCompanion extends UpdateCompanion<ImageRow> {
           ..write('syncStatus: $syncStatus, ')
           ..write('chunkBitmap: $chunkBitmap, ')
           ..write('totalChunks: $totalChunks, ')
+          ..write('chunkSize: $chunkSize, ')
           ..write('lwTs: $lwTs, ')
           ..write('lwDevice: $lwDevice, ')
           ..write('rowid: $rowid')
@@ -3234,6 +3282,580 @@ class LocalIdentityCompanion extends UpdateCompanion<LocalIdentityRow> {
   }
 }
 
+class $ImageTransfersTable extends ImageTransfers
+    with TableInfo<$ImageTransfersTable, ImageTransferRow> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $ImageTransfersTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _peerIdMeta = const VerificationMeta('peerId');
+  @override
+  late final GeneratedColumn<String> peerId = GeneratedColumn<String>(
+    'peer_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _imageIdMeta = const VerificationMeta(
+    'imageId',
+  );
+  @override
+  late final GeneratedColumn<String> imageId = GeneratedColumn<String>(
+    'image_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _statusMeta = const VerificationMeta('status');
+  @override
+  late final GeneratedColumn<String> status = GeneratedColumn<String>(
+    'status',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+    defaultValue: const Constant('queued'),
+  );
+  static const VerificationMeta _chunkSizeMeta = const VerificationMeta(
+    'chunkSize',
+  );
+  @override
+  late final GeneratedColumn<int> chunkSize = GeneratedColumn<int>(
+    'chunk_size',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(0),
+  );
+  static const VerificationMeta _totalChunksMeta = const VerificationMeta(
+    'totalChunks',
+  );
+  @override
+  late final GeneratedColumn<int> totalChunks = GeneratedColumn<int>(
+    'total_chunks',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(0),
+  );
+  static const VerificationMeta _sentBitmapMeta = const VerificationMeta(
+    'sentBitmap',
+  );
+  @override
+  late final GeneratedColumn<String> sentBitmap = GeneratedColumn<String>(
+    'sent_bitmap',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _sentBytesMeta = const VerificationMeta(
+    'sentBytes',
+  );
+  @override
+  late final GeneratedColumn<int> sentBytes = GeneratedColumn<int>(
+    'sent_bytes',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(0),
+  );
+  static const VerificationMeta _updatedAtMeta = const VerificationMeta(
+    'updatedAt',
+  );
+  @override
+  late final GeneratedColumn<int> updatedAt = GeneratedColumn<int>(
+    'updated_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(0),
+  );
+  static const VerificationMeta _errorMeta = const VerificationMeta('error');
+  @override
+  late final GeneratedColumn<String> error = GeneratedColumn<String>(
+    'error',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  @override
+  List<GeneratedColumn> get $columns => [
+    peerId,
+    imageId,
+    status,
+    chunkSize,
+    totalChunks,
+    sentBitmap,
+    sentBytes,
+    updatedAt,
+    error,
+  ];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'image_transfers';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<ImageTransferRow> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('peer_id')) {
+      context.handle(
+        _peerIdMeta,
+        peerId.isAcceptableOrUnknown(data['peer_id']!, _peerIdMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_peerIdMeta);
+    }
+    if (data.containsKey('image_id')) {
+      context.handle(
+        _imageIdMeta,
+        imageId.isAcceptableOrUnknown(data['image_id']!, _imageIdMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_imageIdMeta);
+    }
+    if (data.containsKey('status')) {
+      context.handle(
+        _statusMeta,
+        status.isAcceptableOrUnknown(data['status']!, _statusMeta),
+      );
+    }
+    if (data.containsKey('chunk_size')) {
+      context.handle(
+        _chunkSizeMeta,
+        chunkSize.isAcceptableOrUnknown(data['chunk_size']!, _chunkSizeMeta),
+      );
+    }
+    if (data.containsKey('total_chunks')) {
+      context.handle(
+        _totalChunksMeta,
+        totalChunks.isAcceptableOrUnknown(
+          data['total_chunks']!,
+          _totalChunksMeta,
+        ),
+      );
+    }
+    if (data.containsKey('sent_bitmap')) {
+      context.handle(
+        _sentBitmapMeta,
+        sentBitmap.isAcceptableOrUnknown(data['sent_bitmap']!, _sentBitmapMeta),
+      );
+    }
+    if (data.containsKey('sent_bytes')) {
+      context.handle(
+        _sentBytesMeta,
+        sentBytes.isAcceptableOrUnknown(data['sent_bytes']!, _sentBytesMeta),
+      );
+    }
+    if (data.containsKey('updated_at')) {
+      context.handle(
+        _updatedAtMeta,
+        updatedAt.isAcceptableOrUnknown(data['updated_at']!, _updatedAtMeta),
+      );
+    }
+    if (data.containsKey('error')) {
+      context.handle(
+        _errorMeta,
+        error.isAcceptableOrUnknown(data['error']!, _errorMeta),
+      );
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {peerId, imageId};
+  @override
+  ImageTransferRow map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return ImageTransferRow(
+      peerId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}peer_id'],
+      )!,
+      imageId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}image_id'],
+      )!,
+      status: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}status'],
+      )!,
+      chunkSize: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}chunk_size'],
+      )!,
+      totalChunks: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}total_chunks'],
+      )!,
+      sentBitmap: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}sent_bitmap'],
+      ),
+      sentBytes: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}sent_bytes'],
+      )!,
+      updatedAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}updated_at'],
+      )!,
+      error: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}error'],
+      ),
+    );
+  }
+
+  @override
+  $ImageTransfersTable createAlias(String alias) {
+    return $ImageTransfersTable(attachedDatabase, alias);
+  }
+}
+
+class ImageTransferRow extends DataClass
+    implements Insertable<ImageTransferRow> {
+  /// 对端设备 ID（图片发往谁）。
+  final String peerId;
+  final String imageId;
+
+  /// queued / transferring / done / failed。
+  final String status;
+
+  /// 分块大小（字节）。
+  final int chunkSize;
+
+  /// 总块数。
+  final int totalChunks;
+
+  /// 已发送块位图（逗号分隔 0/1），进度展示用（续传以接收方位图为准）。
+  final String? sentBitmap;
+
+  /// 已发送字节数。
+  final int sentBytes;
+
+  /// 更新时间（epoch 毫秒）。
+  final int updatedAt;
+
+  /// 失败原因（status == failed 时有值）。
+  final String? error;
+  const ImageTransferRow({
+    required this.peerId,
+    required this.imageId,
+    required this.status,
+    required this.chunkSize,
+    required this.totalChunks,
+    this.sentBitmap,
+    required this.sentBytes,
+    required this.updatedAt,
+    this.error,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['peer_id'] = Variable<String>(peerId);
+    map['image_id'] = Variable<String>(imageId);
+    map['status'] = Variable<String>(status);
+    map['chunk_size'] = Variable<int>(chunkSize);
+    map['total_chunks'] = Variable<int>(totalChunks);
+    if (!nullToAbsent || sentBitmap != null) {
+      map['sent_bitmap'] = Variable<String>(sentBitmap);
+    }
+    map['sent_bytes'] = Variable<int>(sentBytes);
+    map['updated_at'] = Variable<int>(updatedAt);
+    if (!nullToAbsent || error != null) {
+      map['error'] = Variable<String>(error);
+    }
+    return map;
+  }
+
+  ImageTransfersCompanion toCompanion(bool nullToAbsent) {
+    return ImageTransfersCompanion(
+      peerId: Value(peerId),
+      imageId: Value(imageId),
+      status: Value(status),
+      chunkSize: Value(chunkSize),
+      totalChunks: Value(totalChunks),
+      sentBitmap: sentBitmap == null && nullToAbsent
+          ? const Value.absent()
+          : Value(sentBitmap),
+      sentBytes: Value(sentBytes),
+      updatedAt: Value(updatedAt),
+      error: error == null && nullToAbsent
+          ? const Value.absent()
+          : Value(error),
+    );
+  }
+
+  factory ImageTransferRow.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return ImageTransferRow(
+      peerId: serializer.fromJson<String>(json['peerId']),
+      imageId: serializer.fromJson<String>(json['imageId']),
+      status: serializer.fromJson<String>(json['status']),
+      chunkSize: serializer.fromJson<int>(json['chunkSize']),
+      totalChunks: serializer.fromJson<int>(json['totalChunks']),
+      sentBitmap: serializer.fromJson<String?>(json['sentBitmap']),
+      sentBytes: serializer.fromJson<int>(json['sentBytes']),
+      updatedAt: serializer.fromJson<int>(json['updatedAt']),
+      error: serializer.fromJson<String?>(json['error']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'peerId': serializer.toJson<String>(peerId),
+      'imageId': serializer.toJson<String>(imageId),
+      'status': serializer.toJson<String>(status),
+      'chunkSize': serializer.toJson<int>(chunkSize),
+      'totalChunks': serializer.toJson<int>(totalChunks),
+      'sentBitmap': serializer.toJson<String?>(sentBitmap),
+      'sentBytes': serializer.toJson<int>(sentBytes),
+      'updatedAt': serializer.toJson<int>(updatedAt),
+      'error': serializer.toJson<String?>(error),
+    };
+  }
+
+  ImageTransferRow copyWith({
+    String? peerId,
+    String? imageId,
+    String? status,
+    int? chunkSize,
+    int? totalChunks,
+    Value<String?> sentBitmap = const Value.absent(),
+    int? sentBytes,
+    int? updatedAt,
+    Value<String?> error = const Value.absent(),
+  }) => ImageTransferRow(
+    peerId: peerId ?? this.peerId,
+    imageId: imageId ?? this.imageId,
+    status: status ?? this.status,
+    chunkSize: chunkSize ?? this.chunkSize,
+    totalChunks: totalChunks ?? this.totalChunks,
+    sentBitmap: sentBitmap.present ? sentBitmap.value : this.sentBitmap,
+    sentBytes: sentBytes ?? this.sentBytes,
+    updatedAt: updatedAt ?? this.updatedAt,
+    error: error.present ? error.value : this.error,
+  );
+  ImageTransferRow copyWithCompanion(ImageTransfersCompanion data) {
+    return ImageTransferRow(
+      peerId: data.peerId.present ? data.peerId.value : this.peerId,
+      imageId: data.imageId.present ? data.imageId.value : this.imageId,
+      status: data.status.present ? data.status.value : this.status,
+      chunkSize: data.chunkSize.present ? data.chunkSize.value : this.chunkSize,
+      totalChunks: data.totalChunks.present
+          ? data.totalChunks.value
+          : this.totalChunks,
+      sentBitmap: data.sentBitmap.present
+          ? data.sentBitmap.value
+          : this.sentBitmap,
+      sentBytes: data.sentBytes.present ? data.sentBytes.value : this.sentBytes,
+      updatedAt: data.updatedAt.present ? data.updatedAt.value : this.updatedAt,
+      error: data.error.present ? data.error.value : this.error,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('ImageTransferRow(')
+          ..write('peerId: $peerId, ')
+          ..write('imageId: $imageId, ')
+          ..write('status: $status, ')
+          ..write('chunkSize: $chunkSize, ')
+          ..write('totalChunks: $totalChunks, ')
+          ..write('sentBitmap: $sentBitmap, ')
+          ..write('sentBytes: $sentBytes, ')
+          ..write('updatedAt: $updatedAt, ')
+          ..write('error: $error')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(
+    peerId,
+    imageId,
+    status,
+    chunkSize,
+    totalChunks,
+    sentBitmap,
+    sentBytes,
+    updatedAt,
+    error,
+  );
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is ImageTransferRow &&
+          other.peerId == this.peerId &&
+          other.imageId == this.imageId &&
+          other.status == this.status &&
+          other.chunkSize == this.chunkSize &&
+          other.totalChunks == this.totalChunks &&
+          other.sentBitmap == this.sentBitmap &&
+          other.sentBytes == this.sentBytes &&
+          other.updatedAt == this.updatedAt &&
+          other.error == this.error);
+}
+
+class ImageTransfersCompanion extends UpdateCompanion<ImageTransferRow> {
+  final Value<String> peerId;
+  final Value<String> imageId;
+  final Value<String> status;
+  final Value<int> chunkSize;
+  final Value<int> totalChunks;
+  final Value<String?> sentBitmap;
+  final Value<int> sentBytes;
+  final Value<int> updatedAt;
+  final Value<String?> error;
+  final Value<int> rowid;
+  const ImageTransfersCompanion({
+    this.peerId = const Value.absent(),
+    this.imageId = const Value.absent(),
+    this.status = const Value.absent(),
+    this.chunkSize = const Value.absent(),
+    this.totalChunks = const Value.absent(),
+    this.sentBitmap = const Value.absent(),
+    this.sentBytes = const Value.absent(),
+    this.updatedAt = const Value.absent(),
+    this.error = const Value.absent(),
+    this.rowid = const Value.absent(),
+  });
+  ImageTransfersCompanion.insert({
+    required String peerId,
+    required String imageId,
+    this.status = const Value.absent(),
+    this.chunkSize = const Value.absent(),
+    this.totalChunks = const Value.absent(),
+    this.sentBitmap = const Value.absent(),
+    this.sentBytes = const Value.absent(),
+    this.updatedAt = const Value.absent(),
+    this.error = const Value.absent(),
+    this.rowid = const Value.absent(),
+  }) : peerId = Value(peerId),
+       imageId = Value(imageId);
+  static Insertable<ImageTransferRow> custom({
+    Expression<String>? peerId,
+    Expression<String>? imageId,
+    Expression<String>? status,
+    Expression<int>? chunkSize,
+    Expression<int>? totalChunks,
+    Expression<String>? sentBitmap,
+    Expression<int>? sentBytes,
+    Expression<int>? updatedAt,
+    Expression<String>? error,
+    Expression<int>? rowid,
+  }) {
+    return RawValuesInsertable({
+      if (peerId != null) 'peer_id': peerId,
+      if (imageId != null) 'image_id': imageId,
+      if (status != null) 'status': status,
+      if (chunkSize != null) 'chunk_size': chunkSize,
+      if (totalChunks != null) 'total_chunks': totalChunks,
+      if (sentBitmap != null) 'sent_bitmap': sentBitmap,
+      if (sentBytes != null) 'sent_bytes': sentBytes,
+      if (updatedAt != null) 'updated_at': updatedAt,
+      if (error != null) 'error': error,
+      if (rowid != null) 'rowid': rowid,
+    });
+  }
+
+  ImageTransfersCompanion copyWith({
+    Value<String>? peerId,
+    Value<String>? imageId,
+    Value<String>? status,
+    Value<int>? chunkSize,
+    Value<int>? totalChunks,
+    Value<String?>? sentBitmap,
+    Value<int>? sentBytes,
+    Value<int>? updatedAt,
+    Value<String?>? error,
+    Value<int>? rowid,
+  }) {
+    return ImageTransfersCompanion(
+      peerId: peerId ?? this.peerId,
+      imageId: imageId ?? this.imageId,
+      status: status ?? this.status,
+      chunkSize: chunkSize ?? this.chunkSize,
+      totalChunks: totalChunks ?? this.totalChunks,
+      sentBitmap: sentBitmap ?? this.sentBitmap,
+      sentBytes: sentBytes ?? this.sentBytes,
+      updatedAt: updatedAt ?? this.updatedAt,
+      error: error ?? this.error,
+      rowid: rowid ?? this.rowid,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (peerId.present) {
+      map['peer_id'] = Variable<String>(peerId.value);
+    }
+    if (imageId.present) {
+      map['image_id'] = Variable<String>(imageId.value);
+    }
+    if (status.present) {
+      map['status'] = Variable<String>(status.value);
+    }
+    if (chunkSize.present) {
+      map['chunk_size'] = Variable<int>(chunkSize.value);
+    }
+    if (totalChunks.present) {
+      map['total_chunks'] = Variable<int>(totalChunks.value);
+    }
+    if (sentBitmap.present) {
+      map['sent_bitmap'] = Variable<String>(sentBitmap.value);
+    }
+    if (sentBytes.present) {
+      map['sent_bytes'] = Variable<int>(sentBytes.value);
+    }
+    if (updatedAt.present) {
+      map['updated_at'] = Variable<int>(updatedAt.value);
+    }
+    if (error.present) {
+      map['error'] = Variable<String>(error.value);
+    }
+    if (rowid.present) {
+      map['rowid'] = Variable<int>(rowid.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('ImageTransfersCompanion(')
+          ..write('peerId: $peerId, ')
+          ..write('imageId: $imageId, ')
+          ..write('status: $status, ')
+          ..write('chunkSize: $chunkSize, ')
+          ..write('totalChunks: $totalChunks, ')
+          ..write('sentBitmap: $sentBitmap, ')
+          ..write('sentBytes: $sentBytes, ')
+          ..write('updatedAt: $updatedAt, ')
+          ..write('error: $error, ')
+          ..write('rowid: $rowid')
+          ..write(')'))
+        .toString();
+  }
+}
+
 abstract class _$AppDatabase extends GeneratedDatabase {
   _$AppDatabase(QueryExecutor e) : super(e);
   $AppDatabaseManager get managers => $AppDatabaseManager(this);
@@ -3245,6 +3867,7 @@ abstract class _$AppDatabase extends GeneratedDatabase {
   late final $PeersTable peers = $PeersTable(this);
   late final $SyncStateTable syncState = $SyncStateTable(this);
   late final $LocalIdentityTable localIdentity = $LocalIdentityTable(this);
+  late final $ImageTransfersTable imageTransfers = $ImageTransfersTable(this);
   @override
   Iterable<TableInfo<Table, Object?>> get allTables =>
       allSchemaEntities.whereType<TableInfo<Table, Object?>>();
@@ -3257,6 +3880,7 @@ abstract class _$AppDatabase extends GeneratedDatabase {
     peers,
     syncState,
     localIdentity,
+    imageTransfers,
   ];
 }
 
@@ -4193,6 +4817,7 @@ typedef $$ImagesTableCreateCompanionBuilder = ImagesCompanion Function({
   Value<String> syncStatus,
   Value<String?> chunkBitmap,
   Value<int> totalChunks,
+  Value<int> chunkSize,
   Value<int> lwTs,
   Value<String> lwDevice,
   Value<int> rowid,
@@ -4209,6 +4834,7 @@ typedef $$ImagesTableUpdateCompanionBuilder = ImagesCompanion Function({
   Value<String> syncStatus,
   Value<String?> chunkBitmap,
   Value<int> totalChunks,
+  Value<int> chunkSize,
   Value<int> lwTs,
   Value<String> lwDevice,
   Value<int> rowid,
@@ -4292,6 +4918,11 @@ class $$ImagesTableFilterComposer
 
   ColumnFilters<int> get totalChunks => $composableBuilder(
     column: $table.totalChunks,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get chunkSize => $composableBuilder(
+    column: $table.chunkSize,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -4388,6 +5019,11 @@ class $$ImagesTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<int> get chunkSize => $composableBuilder(
+    column: $table.chunkSize,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   ColumnOrderings<int> get lwTs => $composableBuilder(
     column: $table.lwTs,
     builder: (column) => ColumnOrderings(column),
@@ -4467,6 +5103,9 @@ class $$ImagesTableAnnotationComposer
     builder: (column) => column,
   );
 
+  GeneratedColumn<int> get chunkSize =>
+      $composableBuilder(column: $table.chunkSize, builder: (column) => column);
+
   GeneratedColumn<int> get lwTs =>
       $composableBuilder(column: $table.lwTs, builder: (column) => column);
 
@@ -4536,6 +5175,7 @@ class $$ImagesTableTableManager
                 Value<String> syncStatus = const Value.absent(),
                 Value<String?> chunkBitmap = const Value.absent(),
                 Value<int> totalChunks = const Value.absent(),
+                Value<int> chunkSize = const Value.absent(),
                 Value<int> lwTs = const Value.absent(),
                 Value<String> lwDevice = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
@@ -4551,6 +5191,7 @@ class $$ImagesTableTableManager
                 syncStatus: syncStatus,
                 chunkBitmap: chunkBitmap,
                 totalChunks: totalChunks,
+                chunkSize: chunkSize,
                 lwTs: lwTs,
                 lwDevice: lwDevice,
                 rowid: rowid,
@@ -4568,6 +5209,7 @@ class $$ImagesTableTableManager
                 Value<String> syncStatus = const Value.absent(),
                 Value<String?> chunkBitmap = const Value.absent(),
                 Value<int> totalChunks = const Value.absent(),
+                Value<int> chunkSize = const Value.absent(),
                 Value<int> lwTs = const Value.absent(),
                 Value<String> lwDevice = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
@@ -4583,6 +5225,7 @@ class $$ImagesTableTableManager
                 syncStatus: syncStatus,
                 chunkBitmap: chunkBitmap,
                 totalChunks: totalChunks,
+                chunkSize: chunkSize,
                 lwTs: lwTs,
                 lwDevice: lwDevice,
                 rowid: rowid,
@@ -5383,6 +6026,301 @@ typedef $$LocalIdentityTableProcessedTableManager =
       LocalIdentityRow,
       PrefetchHooks Function()
     >;
+typedef $$ImageTransfersTableCreateCompanionBuilder =
+    ImageTransfersCompanion Function({
+      required String peerId,
+      required String imageId,
+      Value<String> status,
+      Value<int> chunkSize,
+      Value<int> totalChunks,
+      Value<String?> sentBitmap,
+      Value<int> sentBytes,
+      Value<int> updatedAt,
+      Value<String?> error,
+      Value<int> rowid,
+    });
+typedef $$ImageTransfersTableUpdateCompanionBuilder =
+    ImageTransfersCompanion Function({
+      Value<String> peerId,
+      Value<String> imageId,
+      Value<String> status,
+      Value<int> chunkSize,
+      Value<int> totalChunks,
+      Value<String?> sentBitmap,
+      Value<int> sentBytes,
+      Value<int> updatedAt,
+      Value<String?> error,
+      Value<int> rowid,
+    });
+
+class $$ImageTransfersTableFilterComposer
+    extends Composer<_$AppDatabase, $ImageTransfersTable> {
+  $$ImageTransfersTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<String> get peerId => $composableBuilder(
+    column: $table.peerId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get imageId => $composableBuilder(
+    column: $table.imageId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get status => $composableBuilder(
+    column: $table.status,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get chunkSize => $composableBuilder(
+    column: $table.chunkSize,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get totalChunks => $composableBuilder(
+    column: $table.totalChunks,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get sentBitmap => $composableBuilder(
+    column: $table.sentBitmap,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get sentBytes => $composableBuilder(
+    column: $table.sentBytes,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get updatedAt => $composableBuilder(
+    column: $table.updatedAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get error => $composableBuilder(
+    column: $table.error,
+    builder: (column) => ColumnFilters(column),
+  );
+}
+
+class $$ImageTransfersTableOrderingComposer
+    extends Composer<_$AppDatabase, $ImageTransfersTable> {
+  $$ImageTransfersTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<String> get peerId => $composableBuilder(
+    column: $table.peerId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get imageId => $composableBuilder(
+    column: $table.imageId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get status => $composableBuilder(
+    column: $table.status,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get chunkSize => $composableBuilder(
+    column: $table.chunkSize,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get totalChunks => $composableBuilder(
+    column: $table.totalChunks,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get sentBitmap => $composableBuilder(
+    column: $table.sentBitmap,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get sentBytes => $composableBuilder(
+    column: $table.sentBytes,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get updatedAt => $composableBuilder(
+    column: $table.updatedAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get error => $composableBuilder(
+    column: $table.error,
+    builder: (column) => ColumnOrderings(column),
+  );
+}
+
+class $$ImageTransfersTableAnnotationComposer
+    extends Composer<_$AppDatabase, $ImageTransfersTable> {
+  $$ImageTransfersTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<String> get peerId =>
+      $composableBuilder(column: $table.peerId, builder: (column) => column);
+
+  GeneratedColumn<String> get imageId =>
+      $composableBuilder(column: $table.imageId, builder: (column) => column);
+
+  GeneratedColumn<String> get status =>
+      $composableBuilder(column: $table.status, builder: (column) => column);
+
+  GeneratedColumn<int> get chunkSize =>
+      $composableBuilder(column: $table.chunkSize, builder: (column) => column);
+
+  GeneratedColumn<int> get totalChunks => $composableBuilder(
+    column: $table.totalChunks,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get sentBitmap => $composableBuilder(
+    column: $table.sentBitmap,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<int> get sentBytes =>
+      $composableBuilder(column: $table.sentBytes, builder: (column) => column);
+
+  GeneratedColumn<int> get updatedAt =>
+      $composableBuilder(column: $table.updatedAt, builder: (column) => column);
+
+  GeneratedColumn<String> get error =>
+      $composableBuilder(column: $table.error, builder: (column) => column);
+}
+
+class $$ImageTransfersTableTableManager
+    extends
+        RootTableManager<
+          _$AppDatabase,
+          $ImageTransfersTable,
+          ImageTransferRow,
+          $$ImageTransfersTableFilterComposer,
+          $$ImageTransfersTableOrderingComposer,
+          $$ImageTransfersTableAnnotationComposer,
+          $$ImageTransfersTableCreateCompanionBuilder,
+          $$ImageTransfersTableUpdateCompanionBuilder,
+          (
+            ImageTransferRow,
+            BaseReferences<
+              _$AppDatabase,
+              $ImageTransfersTable,
+              ImageTransferRow
+            >,
+          ),
+          ImageTransferRow,
+          PrefetchHooks Function()
+        > {
+  $$ImageTransfersTableTableManager(
+    _$AppDatabase db,
+    $ImageTransfersTable table,
+  ) : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$ImageTransfersTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$ImageTransfersTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$ImageTransfersTableAnnotationComposer($db: db, $table: table),
+          updateCompanionCallback:
+              ({
+                Value<String> peerId = const Value.absent(),
+                Value<String> imageId = const Value.absent(),
+                Value<String> status = const Value.absent(),
+                Value<int> chunkSize = const Value.absent(),
+                Value<int> totalChunks = const Value.absent(),
+                Value<String?> sentBitmap = const Value.absent(),
+                Value<int> sentBytes = const Value.absent(),
+                Value<int> updatedAt = const Value.absent(),
+                Value<String?> error = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => ImageTransfersCompanion(
+                peerId: peerId,
+                imageId: imageId,
+                status: status,
+                chunkSize: chunkSize,
+                totalChunks: totalChunks,
+                sentBitmap: sentBitmap,
+                sentBytes: sentBytes,
+                updatedAt: updatedAt,
+                error: error,
+                rowid: rowid,
+              ),
+          createCompanionCallback:
+              ({
+                required String peerId,
+                required String imageId,
+                Value<String> status = const Value.absent(),
+                Value<int> chunkSize = const Value.absent(),
+                Value<int> totalChunks = const Value.absent(),
+                Value<String?> sentBitmap = const Value.absent(),
+                Value<int> sentBytes = const Value.absent(),
+                Value<int> updatedAt = const Value.absent(),
+                Value<String?> error = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => ImageTransfersCompanion.insert(
+                peerId: peerId,
+                imageId: imageId,
+                status: status,
+                chunkSize: chunkSize,
+                totalChunks: totalChunks,
+                sentBitmap: sentBitmap,
+                sentBytes: sentBytes,
+                updatedAt: updatedAt,
+                error: error,
+                rowid: rowid,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map(
+                (e) => (
+                  e.readTable<$ImageTransfersTable, ImageTransferRow>(table),
+                  BaseReferences<
+                    _$AppDatabase,
+                    $ImageTransfersTable,
+                    ImageTransferRow
+                  >(db, table, e),
+                ),
+              )
+              .toList(),
+          prefetchHooksCallback: null,
+        ),
+      );
+}
+
+typedef $$ImageTransfersTableProcessedTableManager =
+    ProcessedTableManager<
+      _$AppDatabase,
+      $ImageTransfersTable,
+      ImageTransferRow,
+      $$ImageTransfersTableFilterComposer,
+      $$ImageTransfersTableOrderingComposer,
+      $$ImageTransfersTableAnnotationComposer,
+      $$ImageTransfersTableCreateCompanionBuilder,
+      $$ImageTransfersTableUpdateCompanionBuilder,
+      (
+        ImageTransferRow,
+        BaseReferences<_$AppDatabase, $ImageTransfersTable, ImageTransferRow>,
+      ),
+      ImageTransferRow,
+      PrefetchHooks Function()
+    >;
 
 class $AppDatabaseManager {
   final _$AppDatabase _db;
@@ -5401,4 +6339,6 @@ class $AppDatabaseManager {
       $$SyncStateTableTableManager(_db, _db.syncState);
   $$LocalIdentityTableTableManager get localIdentity =>
       $$LocalIdentityTableTableManager(_db, _db.localIdentity);
+  $$ImageTransfersTableTableManager get imageTransfers =>
+      $$ImageTransfersTableTableManager(_db, _db.imageTransfers);
 }

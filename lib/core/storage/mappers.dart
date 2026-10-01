@@ -87,6 +87,7 @@ class ImageMapper {
       syncStatus: row.syncStatus,
       chunkBitmap: row.chunkBitmap,
       totalChunks: row.totalChunks,
+      chunkSize: row.chunkSize,
       lwTs: row.lwTs,
       lwDevice: row.lwDevice,
     );
@@ -105,6 +106,7 @@ class ImageMapper {
       syncStatus: image.syncStatus,
       chunkBitmap: image.chunkBitmap,
       totalChunks: image.totalChunks,
+      chunkSize: image.chunkSize,
       lwTs: image.lwTs,
       lwDevice: image.lwDevice,
     );
