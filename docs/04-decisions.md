@@ -92,3 +92,51 @@
   日历只展示绑定时间的记录。
 - 后果：原“计划（plans）”概念整体替换为“笔记（notes）”，同步协议与 LWW
   设计不变，仅实体与字段重命名；UI 默认进入笔记列表而非日历。
+
+## ADR-013 同步协议帧线格式（v1 定稿）
+
+- 日期：2026-10-01 | 状态：Accepted
+- 背景：docs/02 §4.3 只定了帧类型清单，M1 需要可实现的线格式。
+- 决策：
+  - 帧 = `[4 字节大端载荷长度][1 字节帧类型][载荷]`；除 ImageChunk 外载荷为
+    JSON（UTF-8），便于调试与扩展。
+  - ImageChunk 载荷为 `[4 字节 meta 长度][meta JSON（imageId/seq/total/size）]
+    [原始数据块]`，避免 base64 膨胀。
+  - 加密通道在协议帧外再包一层密文帧：
+    `[4 字节长度][nonce(12)+cipherText+MAC(16)]`，每条消息独立随机 nonce，
+    “加密并认证整帧”。
+- 后果：TCP/BLE 共用同一帧格式；帧上限 64 MB（覆盖大图分块场景）。
+
+## ADR-014 mDNS 服务注册采用纯 Dart 应答器
+
+- 日期：2026-10-01 | 状态：Accepted
+- 背景：ADR-002 选定 multicast_dns，但该包只支持发现（查询），不支持注册
+  Bonjour 服务（源码中有 TODO）。
+- 决策：自研最小 mDNS 应答器（`MdnsResponder`，纯 Dart）：监听
+  224.0.0.251:5353，回应 PTR/SRV/TXT/A 查询并周期性主动宣告；
+  发现仍用 multicast_dns。
+- 后果：双端同源码、Windows 可单测；应答只覆盖本项目需要的记录类型。
+
+## ADR-015 Windows 单机 mDNS 联测经验与对策
+
+- 日期：2026-10-01 | 状态：Accepted
+- 背景：Windows 上 5353 可能被其它应用占用；多网卡（含虚拟/隧道网卡）导致
+  multicast_dns 启动失败；组播发送会异步触发 errno 1232 socket 错误；
+  单播 mDNS 应答在本机回环下不可靠。
+- 决策：
+  - `LanTransport` 增加 `mdnsPort` 参数（默认 5353），测试/调试可换端口。
+  - mDNS 客户端与应答器都只加入一个首选网卡（非回环、非 link-local 优先），
+    跳过 join 失败的网卡。
+  - 应答用组播发送（查询方已加入组播组即可收到），并给 socket 流挂
+    `onError` 吞掉 Windows 的 1232 异步噪声。
+- 后果：Windows 单机可稳定跑双进程/双端 mDNS 测试；真实局域网仍走标准 5353。
+
+## ADR-016 会话密钥派生与存储表补充
+
+- 日期：2026-10-01 | 状态：Accepted
+- 决策：
+  - 会话密钥与配对码用 HKDF-SHA256 从 X25519 共享密钥派生；info 绑定双方
+    公钥时先按字节排序，保证双方各自计算得到相同结果。
+  - images 表补充 `lwTs/lwDevice/totalChunks`（图片级 LWW 与续传需要）；
+    新增 `local_identity` 表保存本机设备 ID 与身份密钥对（base64）。
+- 后果：docs/02 §7 表草案在实现时做了字段补充，均为实现细节，不改变架构。

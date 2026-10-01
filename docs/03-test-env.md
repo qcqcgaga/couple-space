@@ -55,6 +55,18 @@
   验证“发现 + TCP echo + 分帧协议”在本机回环网络工作。
 - 该探针同时就是同步引擎集成测试的基座。
 
+已实现为 `tool/probe.dart`，并接入 `flutter test`（`test/transports/
+two_process_probe_test.dart`）：
+
+```bash
+dart run tool/probe.dart server --id probe-server --name 探针服务器
+dart run tool/probe.dart client --find probe-server --name 探针客户端
+```
+
+> Windows 注意：5353 可能被其它应用占用（如豆包、Copilot），可加
+> `--mdns-port 55353` 换端口；本机单机联测时 mDNS 应答走组播回环，
+> 两个实例需使用同一端口。
+
 ### 探针 B：Mumu 双开互通
 
 - 在 Mumu 两个实例安装同一个探针 App（Flutter 小程序）：

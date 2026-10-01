@@ -10,8 +10,11 @@
 
 ## 当前阶段
 
-M1（共享核心）起步：笔记模型、字段级 LWW 冲突合并、传输层抽象接口已完成；
-存储、同步协议、UI 尚未开始。
+M1（共享核心）进行中：笔记模型、字段级 LWW、传输抽象、drift 本地存储
+（notes/images/tombstones/peers/sync_state/local_identity）、同步协议帧
+编解码、X25519 + ChaCha20-Poly1305 加密通道、mDNS + TCP 局域网传输
+（含纯 Dart mDNS 应答器）均已实现并有单测；双进程协议探针
+（`tool/probe.dart`）已跑通。下一步：图片分块续传队列、同步引擎编排。
 
 ## 快速开始
 
@@ -20,6 +23,17 @@ flutter pub get
 flutter test
 flutter analyze
 ```
+
+### 本机协议探针（探针 A，双进程 mDNS + TCP + 分帧）
+
+```bash
+# 终端 1
+dart run tool/probe.dart server --id probe-server --name 探针服务器
+# 终端 2
+dart run tool/probe.dart client --find probe-server --name 探针客户端
+```
+
+Windows 上若 5353 被占用，两端都加 `--mdns-port 55353`。
 
 ### Windows 中文路径提示
 
