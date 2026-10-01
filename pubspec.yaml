@@ -1,0 +1,19 @@
+name: couple_space
+description: "情侣共享空间：重笔记、轻日历的点对点情侣共享笔记 App。"
+publish_to: 'none'
+version: 0.1.0+1
+
+environment:
+  sdk: ^3.13.4
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0
+
+flutter:
+  uses-material-design: true
