@@ -3,9 +3,12 @@ import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 
+import 'mdns_capability.dart';
+
 /// 探针 A 的自动化版本（docs/03-test-env.md §4）：
 /// 启动两个真实 Dart 进程，走 mDNS 发现 + TCP + 分帧协议，完成 Hello/PeerInfo。
-void main() {
+void main() async {
+  final mdnsStack = await supportsMdnsStack(port: 55364);
   test(
     '双进程 mDNS + TCP + 分帧协议探针',
     () async {
@@ -24,7 +27,7 @@ void main() {
           '--name',
           '探针服务器',
           '--mdns-port',
-          '55353',
+          '55354',
         ],
         workingDirectory: root,
       );
@@ -51,7 +54,7 @@ void main() {
           '--name',
           '探针客户端',
           '--mdns-port',
-          '55353',
+          '55354',
         ],
         workingDirectory: root,
       );
@@ -74,6 +77,9 @@ void main() {
       expect(serverOut.toString(), contains('SERVER-OK'));
     },
     timeout: const Timeout(Duration(seconds: 180)),
+    skip: mdnsStack
+        ? false
+        : '本机 mDNS 栈不可用（见 ADR-02x），自动跳过 mDNS 用例',
   );
 }
 

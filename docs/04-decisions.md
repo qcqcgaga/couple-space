@@ -221,3 +221,89 @@
   two_process_sync_test.dart`）。
 - 后果：Windows 本机可自动化验证“发现→握手→加密→增量→图片断点续传”
   全链路；探针输出使用串行化写队列避免 Windows 重定向下 stdout 竞态。
+
+## ADR-023 M2 UI 分层：app / services / platform
+
+- 日期：2026-10-02 | 状态：Accepted
+- 背景：docs/02 §11 建议的目录结构落地到 M2（Flutter UI + 用例层）。
+- 决策：
+  - `lib/app/` 放 UI（主题、主页骨架、笔记列表/日历/当日记录/编辑页、卡片、
+    月历、空态插画等组件）；`lib/services/` 放用例层（NoteService、
+    AppServices 装配）；`lib/platform/` 放平台插件抽象（ImagePickerBridge）。
+  - 用例层不直接依赖页面：NoteService 提供 CRUD、图片管理、按日查询、
+    缩略图；页面只消费 NoteService。
+  - 响应式数据流：NotesDao 增加 `watchNotes()`——同时监听 notes /
+    note_field_versions / images 三张表，任一变化即重查并发出最新列表，
+    供列表与日历两个主视图消费；卡片缩略图按需生成。
+- 后果：M3 接入同步引擎时复用同一 NoteService 与 DriftSyncStorage，
+  页面无需感知协议细节。
+
+## ADR-024 缩略图缓存策略
+
+- 日期：2026-10-02 | 状态：Accepted
+- 背景：docs/01 §6.3 要求“本地自动生成缩略图用于列表/日历展示；原图完整保留”。
+- 决策：
+  - 新增 `ThumbnailStore`（应用 cache 目录 `thumbnails/`）：用 `image` 包
+    从原图生成最长边 480px 的 JPEG（质量 82），文件名为 `<imageId>_thumb.jpg`，
+    缺图/无法解码时返回 null 由 UI 显示占位。
+  - 原图不压缩、不改写（ADR-006 的不限制大小约束不变）；缩略图按需生成并
+    缓存，图片删除时一并清理。
+- 后果：列表/日历滚动只读小图；大图文件仍只在需要时读取。
+
+## ADR-025 编辑保存：仅对变化的字段重新打时间戳
+
+- 日期：2026-10-02 | 状态：Accepted
+- 背景：字段级 LWW 要求“每个字段独立决胜”；若整张表单保存时把所有字段都
+  重新打上本机时间戳，会把对方更新的“未改动字段”错误覆盖。
+- 决策：`NoteService.updateNote` 逐字段比较当前值与草稿，只对真正变化的
+  字段写 `FieldVersion(now, deviceId)`；未变化字段保留原有版本。
+- 后果：两人同时编辑不同字段时各自保留（符合 ADR-003）；实现上直接构造新
+  Note 而非 copyWith，避免 copyWith 无法把 reminderAt 置空的问题
+  （与 ADR-019 对图片的处理同源）。
+
+## ADR-026 列表排序、日历日期归属与提醒基准时间
+
+- 日期：2026-10-02 | 状态：Accepted
+- 决策：
+  - 笔记列表按「最后写入时间（fieldVersions 最大值）倒序」，退化为创建时间；
+    不绑定时间的笔记正常显示。
+  - 日历日期归属：全天只覆盖 startAt 当天；时间段覆盖 startAt～endAt 的
+    日期闭区间；起点缺失按不绑定处理，终点缺省视为起点当天；不绑定的记录
+    不进入日历。
+  - 提醒基准（v1）：全天以当天 09:00 为基准（避免午夜提醒），时间段以
+    startAt 为基准；`reminderAt = 基准 - 提前分钟数`；M2 只录入与存储字段，
+    实际通知调度在 M5 接入 flutter_local_notifications。
+- 后果：列表与日历行为可单测（NoteService.coversDay / daysWithNotesInMonth /
+  reminderAtFor）；M5 通知调度直接读 reminderAt。
+
+## ADR-027 图片导入端口：LocalImageImporter
+
+- 日期：2026-10-02 | 状态：Accepted
+- 背景：组件测试在 flutter_test 的假异步环境下做真实文件 IO 会挂起，
+  且测试不应依赖磁盘。
+- 决策：NoteService 依赖 `LocalImageImporter` 端口导入本地图片
+  （复制原图 + 生成缩略图 + 计算 sha256/size）；生产用
+  `DiskLocalImageImporter`，测试注入 `MemoryLocalImageImporter`（不碰磁盘）。
+- 后果：用例层与 UI 测试完全脱离磁盘；真实文件行为仍由服务层单测
+  （plain test，真实事件循环）覆盖。
+
+## ADR-028 Windows 组播回环能力探测与 mDNS 测试自动跳过
+
+- 日期：2026-10-02 | 状态：Accepted
+- 背景：本机在 2026-10-02 出现组播回环退化：两个进程各自绑定同一 UDP 端口
+  （mDNS 单机测试的必要形态）时，Windows 只把组播包投递给其中一个 socket，
+  进一步排查发现原始组播回环仍可用，但完整 mDNS 栈（应答器 + multicast_dns
+  客户端）在本机失效，导致 `lan_transport_test` 的 mDNS 发现与两个双进程
+  探针超时失败；此前同一环境（66 项）全过。真实局域网/真机各自绑定端口，
+  不受此问题影响。
+- 决策：
+  - 新增 `test/transports/mdns_capability.dart`：在进程内启动真实的
+    `MdnsResponder` 与 `multicast_dns` 客户端（使用与 LanTransport 相同的
+    首选网卡选择逻辑），验证“服务宣告 + PTR 查询应答”的完整 mDNS 栈是否
+    成立；不成立时相关 mDNS 用例（LanTransport mDNS 发现、双进程 probe、
+    双进程 sync）自动跳过并给出原因。三个测试文件各自使用独立端口
+    （55353/55354/55355 与探测端口 55363/55364/55365），避免并行抢占。
+  - 保留 `tool/multicast_probe.dart` 作为人工诊断工具
+    （listener/sender/bind/send）。
+- 后果：`flutter test` 在 mDNS 栈不可用的 Windows 上保持通过（相关用例
+  skip，其余全跑）；在健康的单机/CI 环境仍会真实执行 mDNS 全链路验证。

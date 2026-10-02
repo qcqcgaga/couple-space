@@ -3,11 +3,14 @@ import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 
+import 'mdns_capability.dart';
+
 /// 双进程同步引擎探针（docs/03-test-env.md §4 的 M1 扩展）：
 /// 两个真实 Dart 进程通过 mDNS 发现 + TCP 建立连接，跑完整引擎——
 /// 握手/配对、会话密钥协商、VersionMap 比对、NoteDelta/ImageMeta/ImageChunk、
 /// 加密通道与图片分块传输，验证双端收敛。
-void main() {
+void main() async {
+  final mdnsStack = await supportsMdnsStack(port: 55365);
   test(
     '双进程 mDNS + TCP + 同步引擎（笔记 + 图片分块）',
     () async {
@@ -26,7 +29,7 @@ void main() {
           '--name',
           '同步服务器',
           '--mdns-port',
-          '55353',
+          '55355',
         ],
         workingDirectory: root,
       );
@@ -55,7 +58,7 @@ void main() {
           '--name',
           '同步客户端',
           '--mdns-port',
-          '55353',
+          '55355',
         ],
         workingDirectory: root,
       );
@@ -82,6 +85,9 @@ void main() {
       expect(serverOut.toString(), contains('image=probe-image'));
     },
     timeout: const Timeout(Duration(seconds: 240)),
+    skip: mdnsStack
+        ? false
+        : '本机 mDNS 栈不可用（见 ADR-02x），自动跳过 mDNS 用例',
   );
 }
 

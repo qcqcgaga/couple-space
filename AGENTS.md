@@ -75,11 +75,15 @@
 - 不得擅自变更核心原则；若用户新提出的需求与原则冲突，先指出并记录。
 - 关键技术决策记录到 `docs/04-decisions.md`，保证会话间可追溯。
 - 文档与代码中的注释、命名、沟通默认使用中文（技术术语除外）。
-- 当前阶段：M1（共享核心）已完成——笔记模型、字段级 LWW、drift 本地存储、
-  同步协议帧、X25519+ChaCha20 加密通道、mDNS+TCP 局域网传输、图片分块与
-  断点续传、同步引擎编排（握手/配对/会话密钥/VersionMap/增量/Ack）均已实现，
-  `flutter test` 66 项全过、`flutter analyze` 零问题；下一步按 `docs/02`
-  进入 M2（Android App：笔记 CRUD 与列表/日历 UI）。
+- 当前阶段：M1（共享核心）与 M2（Android App UI）均已完成——M1 含笔记模型、
+  字段级 LWW、drift 本地存储、同步协议帧、X25519+ChaCha20 加密通道、
+  mDNS+TCP 局域网传输、图片分块与断点续传、同步引擎编排；M2 含笔记 CRUD
+  （正文为主/标题可选/时间三态/分类颜色/地点/提醒字段）、笔记列表（主视图）+
+  日历（辅助视图）、图片选择与缩略图管理、简约可爱中文 UI，以及服务层/
+  组件层测试（`flutter test` 87 过 + 3 个环境性跳过、`flutter analyze`
+  零问题）。Windows 组播回环退化时 mDNS 单机用例自动跳过（ADR-028），
+  真机联调不受影响；下一步按 `docs/02` 进入 M3（配对码/二维码、蓝牙、
+  热点、Android 传输接入 App）。
 - **Windows 中文路径注意**：项目实际目录为 `D:\agent_project\情侣共享空间`，
   `flutter analyze` 在该路径下会因分析服务器的编码 bug 崩溃（`flutter test` 不受影响）。
   已建立 ASCII 目录联接 `D:\agent_project\couple-space` 指向真实目录；

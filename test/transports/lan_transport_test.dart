@@ -8,7 +8,13 @@ import 'package:couple_space/core/sync/transports/lan/tcp_connection.dart';
 import 'package:couple_space/core/sync/transports/transport.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-void main() {
+import 'mdns_capability.dart';
+
+void main() async {
+  // Windows 网络状态异常时单机 mDNS 回环不可用，自动跳过相关用例。
+  final mdnsStack = await supportsMdnsStack(port: 55363);
+  const mdnsSkip = '本机 mDNS 栈不可用（见 ADR-02x），自动跳过 mDNS 用例';
+
   group('FrameChannel over 回环 TCP', () {
     test('双向交换协议帧', () async {
       final server = await ServerSocket.bind(InternetAddress.loopbackIPv4, 0);
@@ -164,6 +170,7 @@ void main() {
         await sub.cancel();
       },
       timeout: const Timeout(Duration(seconds: 60)),
+      skip: mdnsStack ? false : mdnsSkip,
     );
   });
 }

@@ -1,5 +1,7 @@
 import 'package:drift/drift.dart';
 
+import 'dart:async';
+
 import '../models/image.dart';
 import '../models/note.dart';
 import '../models/note_edit.dart';
@@ -36,6 +38,44 @@ class NotesDao {
       result.add(NoteMapper.toModel(row, versions));
     }
     return result;
+  }
+
+  /// 响应式监听全部可见笔记（含字段版本与图片变化的刷新）。
+  ///
+  /// notes / note_field_versions / images 任一表变化都会重新查询并发出
+  /// 最新列表，供笔记列表与日历等主视图消费。
+  Stream<List<Note>> watchNotes({bool includeDeleted = false}) {
+    final controller = StreamController<List<Note>>();
+    late final StreamSubscription<List<NoteRow>> noteSub;
+    late final StreamSubscription<List<NoteFieldVersionRow>> versionSub;
+    late final StreamSubscription<List<ImageRow>> imageSub;
+
+    Future<void> reload() async {
+      try {
+        final notes = await allNotes(includeDeleted: includeDeleted);
+        if (!controller.isClosed) {
+          controller.add(notes);
+        }
+      } catch (error) {
+        if (!controller.isClosed) {
+          controller.addError(error);
+        }
+      }
+    }
+
+    noteSub = db.select(db.notes).watch().listen((_) => reload());
+    versionSub = db.select(db.noteFieldVersions).watch().listen((_) => reload());
+    imageSub = db.select(db.images).watch().listen((_) => reload());
+
+    controller.onCancel = () async {
+      await noteSub.cancel();
+      await versionSub.cancel();
+      await imageSub.cancel();
+    };
+
+    // 主动触发一次初始加载（watch 的首帧可能先于订阅者到达）。
+    unawaited(reload());
+    return controller.stream;
   }
 
   /// 取某个同步时间点之后有更新的笔记（含已删除），用于增量同步。

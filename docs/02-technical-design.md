@@ -234,7 +234,7 @@ test/           # Dart 单测/集成测试
 
 - **M1 共享核心**：drift 模型、字段级 LWW、加密通道、LanTransport（mDNS+TCP）、
   图片分块续传、Dart 单测/双进程协议测试（Windows 可跑）。
-- **M2 Android App**：笔记 CRUD、笔记列表（主）+ 日历（辅助）UI、本地存储、图片选择与管理。
+- **M2 Android App**：笔记 CRUD、笔记列表（主）+ 日历（辅助）UI、本地存储、图片选择与管理。（2026-10-02 完成：实现见 lib/app + lib/services，ADR-023～027）
 - **M3 配对与 Android 传输**：配对码/二维码、蓝牙、热点、Android 真机联调。
 - **M4 iOS**：iOS 传输（mDNS+TCP 复用 Dart、BLE 原生）、iOS 构建与联调。
 - **M5 完整闭环**：提醒、备份、双端真机全路径验收、UI 打磨（简约可爱）。
