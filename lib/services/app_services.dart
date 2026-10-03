@@ -12,11 +12,11 @@ import '../core/storage/thumbnails.dart';
 import '../core/sync/sync_storage.dart';
 import '../core/utils/ids.dart';
 import 'note_service.dart';
+import 'sync_service.dart';
 
-/// 应用服务装配：打开数据库、加载/创建本地身份、准备目录与存储。
-///
-/// M3 接入同步引擎时将复用 [identity] 与 [syncStorage]
-/// （ADR-020：引擎依赖 DriftSyncStorage 端口，不直接依赖 DAO）。
+/// 应用服务装配：打开数据库、加载/创建本地身份、准备目录与存储，
+/// 并接入同步引擎（ADR-029：SyncService 编排 LanTransport + SyncEngine，
+/// 复用 [identity]、[imageFiles] 与 [syncStorage]）。
 class AppServices {
   AppServices._({
     required this.db,
@@ -25,6 +25,7 @@ class AppServices {
     required this.thumbnails,
     required this.syncStorage,
     required this.notes,
+    required this.sync,
   });
 
   final AppDatabase db;
@@ -33,6 +34,7 @@ class AppServices {
   final ThumbnailStore thumbnails;
   final DriftSyncStorage syncStorage;
   final NoteService notes;
+  final SyncService sync;
 
   /// 打开应用：数据库（openFlutterDatabase）+ 本地身份 + 图片目录。
   static Future<AppServices> open() async {
@@ -56,6 +58,13 @@ class AppServices {
       files: imageFiles,
       thumbnails: thumbnailStore,
     );
+    final syncService = SyncService(
+      db: db,
+      identity: identity,
+      imageFiles: imageFiles,
+    );
+    // 启动局域网发现/监听；失败不阻断 App 启动（手动连接仍可用）。
+    await syncService.start();
 
     return AppServices._(
       db: db,
@@ -64,6 +73,7 @@ class AppServices {
       thumbnails: thumbnailStore,
       syncStorage: DriftSyncStorage(db),
       notes: noteService,
+      sync: syncService,
     );
   }
 
@@ -87,5 +97,8 @@ class AppServices {
     return identity;
   }
 
-  Future<void> close() => db.close();
+  Future<void> close() async {
+    await sync.stop();
+    await db.close();
+  }
 }

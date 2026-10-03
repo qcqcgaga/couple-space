@@ -47,12 +47,19 @@ class SyncEvent {
 
 /// 配对挑战：握手需要用户确认 SAS（配对码）时发出。
 class PairingChallenge {
-  const PairingChallenge({required this.peerDeviceId, required this.code});
+  const PairingChallenge({
+    required this.peerDeviceId,
+    required this.code,
+    this.verifiedByQr = false,
+  });
 
   final String peerDeviceId;
 
   /// 本端由 ECDH 共享密钥计算出的 6 位配对码（UI 展示/用户比对用）。
   final String code;
+
+  /// 是否已通过二维码锁定对端身份公钥（扫码后仍须比对并确认 SAS）。
+  final bool verifiedByQr;
 }
 
 /// 同步引擎配置。
@@ -126,6 +133,9 @@ class SyncEngine {
   Completer<String>? _pairingCompleter;
   String? _expectedPairingCode;
 
+  /// 二维码配对期望：扫码/粘贴二维码后预先锁定对端设备 ID 与身份公钥。
+  ({String deviceId, String identityPublicKey})? _expectedPeer;
+
   Stream<SyncEvent> get events => _events.stream;
 
   Stream<PairingChallenge> get onPairingChallenge => _challenges.stream;
@@ -145,6 +155,15 @@ class SyncEngine {
     if (completer != null && !completer.isCompleted) {
       completer.complete(code);
     }
+  }
+
+  /// 通过二维码锁定对端身份：配对时校验对端 Hello 携带的身份公钥与
+  /// 二维码内容一致（out-of-band 信任），随后仍需用户比对并确认 SAS。
+  void prepareQrPairing(String peerDeviceId, String identityPublicKey) {
+    _expectedPeer = (
+      deviceId: peerDeviceId,
+      identityPublicKey: identityPublicKey,
+    );
   }
 
   /// 关闭全部会话（App 退出时调用）。
@@ -212,6 +231,9 @@ class SyncEngine {
       );
     }
     session.peerDeviceId = peerHello.deviceId;
+    if (!session._peerKnown.isCompleted) {
+      session._peerKnown.complete();
+    }
 
     // 2. 会话密钥交换：交换临时 X25519 公钥。
     final ecdh = await EcdhSession.generate();
@@ -277,6 +299,15 @@ class SyncEngine {
     String mySas,
   ) async {
     final conn = session.connection;
+    final expected = _expectedPeer;
+    if (expected != null &&
+        (expected.deviceId != peerHello.deviceId ||
+            expected.identityPublicKey != peerHello.identityPublicKey)) {
+      throw const SyncHandshakeException(
+        'identity_mismatch',
+        '对端身份与二维码信息不一致',
+      );
+    }
 
     if (!options.autoAcceptPairing) {
       if (_expectedPairingCode == null) {
@@ -286,6 +317,7 @@ class SyncEngine {
         _challenges.add(PairingChallenge(
           peerDeviceId: peerHello.deviceId,
           code: mySas,
+          verifiedByQr: expected != null,
         ));
         try {
           final entered = await completer.future.timeout(options.handshakeTimeout);
@@ -323,6 +355,8 @@ class SyncEngine {
           name: peerInfo.name,
           identityPublicKey: peerHello.identityPublicKey,
         ));
+    // 配对成功后清除二维码期望，避免陈旧期望影响后续码配对。
+    _expectedPeer = null;
     await conn.sendFrame(const AckFrame(forType: SyncFrameType.pair, ok: true));
   }
 
@@ -972,6 +1006,7 @@ class SyncSession {
   final Completer<AckFrame> _ack = Completer<AckFrame>();
   final Completer<void> _done = Completer<void>();
   final Completer<void> _synced = Completer<void>();
+  final Completer<void> _peerKnown = Completer<void>();
   final Set<String> _activeTransfers = <String>{};
 
   _SessionPhase _phase = _SessionPhase.handshake;
@@ -990,6 +1025,9 @@ class SyncSession {
 
   /// 本轮增量同步收敛（笔记/元数据）后完成；图片字节可能仍在后台传输。
   Future<void> get synced => _synced.future;
+
+  /// 握手识别出对端设备 ID 后完成（供上层按 peer 去重会话）。
+  Future<void> get peerKnown => _peerKnown.future;
 
   Future<void> close() => _engine._closeSession(this);
 

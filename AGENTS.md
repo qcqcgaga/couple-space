@@ -75,15 +75,19 @@
 - 不得擅自变更核心原则；若用户新提出的需求与原则冲突，先指出并记录。
 - 关键技术决策记录到 `docs/04-decisions.md`，保证会话间可追溯。
 - 文档与代码中的注释、命名、沟通默认使用中文（技术术语除外）。
-- 当前阶段：M1（共享核心）与 M2（Android App UI）均已完成——M1 含笔记模型、
+- 当前阶段：M1（共享核心）、M2（Android App UI）与 M3（配对与 Android 传输
+  接入 App）均已完成——M1 含笔记模型、
   字段级 LWW、drift 本地存储、同步协议帧、X25519+ChaCha20 加密通道、
   mDNS+TCP 局域网传输、图片分块与断点续传、同步引擎编排；M2 含笔记 CRUD
   （正文为主/标题可选/时间三态/分类颜色/地点/提醒字段）、笔记列表（主视图）+
   日历（辅助视图）、图片选择与缩略图管理、简约可爱中文 UI，以及服务层/
   组件层测试（`flutter test` 87 过 + 3 个环境性跳过、`flutter analyze`
-  零问题）。Windows 组播回环退化时 mDNS 单机用例自动跳过（ADR-028），
-  真机联调不受影响；下一步按 `docs/02` 进入 M3（配对码/二维码、蓝牙、
-  热点、Android 传输接入 App）。
+  零问题）。M3 含 SyncService 编排（白名单自动连接、手动 IP 直连、会话去重）、
+  6 位配对码（SAS）+ 二维码（pair URI + 身份公钥锁定）配对、Android 权限/
+  MulticastLock/蓝牙平台通道预留、新增「同步」页签与接入测试
+  （ADR-029~032）；Windows 组播回环退化时 mDNS 单机用例自动跳过（ADR-028），
+  真机联调不受影响；蓝牙原生 BLE 与摄像头扫码在 M3 后期真机联调接入，
+  下一步按 `docs/02` 进入 M4（iOS 传输与构建）。
 - **Windows 中文路径注意**：项目实际目录为 `D:\agent_project\情侣共享空间`，
   `flutter analyze` 在该路径下会因分析服务器的编码 bug 崩溃（`flutter test` 不受影响）。
   已建立 ASCII 目录联接 `D:\agent_project\couple-space` 指向真实目录；

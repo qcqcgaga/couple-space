@@ -307,3 +307,85 @@
     （listener/sender/bind/send）。
 - 后果：`flutter test` 在 mDNS 栈不可用的 Windows 上保持通过（相关用例
   skip，其余全跑）；在健康的单机/CI 环境仍会真实执行 mDNS 全链路验证。
+
+## ADR-029 M3 应用层同步编排：SyncService + 白名单自动连接
+
+- 日期：2026-10-03 | 状态：Accepted
+- 背景：M1 的同步引擎（SyncEngine）与 M2 的 App（NoteService/AppServices）
+  已完成，但引擎尚未接入 App；需要“发现→自动连接→配对→增量同步”的
+  应用层编排与 UI。
+- 决策：
+  - 新增 `SyncService`（ChangeNotifier，lib/services/sync_service.dart）：
+    装配 LanTransport + SyncEngine + DriftSyncStorage，复用 AppServices 的
+    identity / imageFiles；启动时加载设备昵称与自动连接开关
+    （sync_state 键值 `device_name` / `auto_connect`），并请求运行时权限、
+    获取 MulticastLock。
+  - 发现策略与 docs/02 §5 一致：mDNS 发现的设备只有「已在 peers 白名单」
+    或「二维码已锁定身份」才自动连接；陌生设备仅展示，用户手动发起配对。
+  - 会话去重：握手识别出对端设备 ID（`SyncSession.peerKnown`）后，每端
+    对同一 peer 只保留一个活跃会话；双向同时发起连接产生的重复会话直接
+    关闭新会话（LWW 幂等兜底，数据不会错乱）。
+  - App 装配：`AppServices.open()` 创建并启动 SyncService；`close()` 停止；
+    HomeShell 新增「同步」页签（本机信息、二维码/配对码、设备与白名单、
+    手动 IP 直连、蓝牙/热点入口、最近同步事件）。
+- 后果：M1 引擎无需改动协议即可被 UI 消费；页面只面向 SyncService 状态，
+  协议细节仍隔离在 core/sync。
+
+## ADR-030 二维码配对：pair URI + 引擎锁定身份公钥 + SAS 确认
+
+- 日期：2026-10-03 | 状态：Accepted
+- 背景：docs/02 §5 要求“首次配对用二维码/配对码建立信任、交换身份公钥”；
+  引擎已有 6 位 SAS（配对码）确认流程，但没有二维码通道。
+- 决策：
+  - 二维码内容为 `couple-space://pair?deviceId=...&name=...&key=...`
+    （`PairQrCodec`，lib/core/pairing/qr_codec.dart），key 为 X25519 身份
+    公钥 base64；本机二维码用 qr_flutter 渲染，扫码/粘贴内容后锁定对端。
+  - 引擎新增 `SyncEngine.prepareQrPairing(deviceId, identityPublicKey)`：
+    配对时校验对端 Hello 携带的公钥与二维码一致，不一致直接
+    identity_mismatch 失败；一致仍照常弹出 6 位配对码让用户确认
+    （SAS 仍是会话级防中间人手段，二维码不替代码确认，只是 out-of-band
+    锁定身份，PairingChallenge 增加 `verifiedByQr` 标记供 UI 提示）。
+  - 摄像头扫码留待真机联调（与蓝牙同批）；当前提供“复制二维码内容 +
+    粘贴输入”的完整可测路径。
+- 后果：配对码与二维码均可完成首次配对；二维码流程不削弱 SAS 防中间人
+  语义，代价是扫码仍需一次码确认（两边显示一致，UI 提供自动填入）。
+
+## ADR-031 Android 权限与平台通道：MulticastLock / 运行时权限 / 蓝牙预留
+
+- 日期：2026-10-03 | 状态：Accepted
+- 背景：docs/02 §6 要求补齐 Android 权限（NEARBY_WIFI_DEVICES、位置、
+  蓝牙、通知），mDNS 需要 MulticastLock；蓝牙原生 BLE 按 §3.3 预留。
+- 决策：
+  - AndroidManifest 补齐：INTERNET/ACCESS_NETWORK_STATE/ACCESS_WIFI_STATE/
+    CHANGE_WIFI_MULTICAST_STATE、NEARBY_WIFI_DEVICES（neverForLocation）、
+    位置权限（maxSdkVersion=32）、蓝牙细粒度权限（SCAN/CONNECT/ADVERTISE）
+    与旧版 BLUETOOTH/ADMIN、POST_NOTIFICATIONS（M5 提醒先声明）、BLE 特性
+    非必需声明。
+  - MainActivity 实现三个平台通道：`couple_space/wifi`（WifiManager
+    MulticastLock）、`couple_space/permissions`（ActivityCompat 按当前 SDK
+    过滤并请求运行时权限，返回被授予项）、`couple_space/bluetooth`
+    （BLE 契约占位，当前统一返回 not_implemented，真机联调时实现）。
+  - Dart 侧封装：`MethodChannelMulticastLock`（非 Android 静默）、
+    `ChannelPermissionRequester`、`BluetoothChannel` 接口 +
+    `BluetoothPlatform` 实现（扫描/发现/连接/字节流契约，原生未实现时
+    上层提示“待真机联调”）。
+  - iOS 侧代码预留：Info.plist 增加 NSLocalNetworkUsageDescription、
+    NSBonjourServices（_couple-space._tcp）、NSBluetooth 说明；构建仍走
+    GitHub Actions macOS runner（ADR-009）。
+- 后果：Android 权限与组播锁在真机上可用；蓝牙/扫码等原生能力保持同一
+  契约，接入时不改上层。
+
+## ADR-032 Transport 手动直连接口与会话去重语义
+
+- 日期：2026-10-03 | 状态：Accepted
+- 背景：docs/02 §3.2 的“手动兜底：输入 IP 直连（跳过发现）”此前只在
+  LanTransport 内部存在，未进入 Transport 抽象；App 层手动连接需要通用入口。
+- 决策：
+  - `Transport` 接口增加 `connectToHost(host, port)`：LanTransport 实现为
+    TCP 直连；蓝牙等通道不支持时抛 UnsupportedError；测试假传输按相同
+    语义实现。
+  - 同步服务层对同一 peer 的会话去重以「握手识别出的对端设备 ID」为准
+    （`SyncSession.peerKnown` 完成即注册），不依赖发起/接受方向；重复会话
+    由后建立方关闭，SyncEngine 本身保持多会话能力不变。
+- 后果：手动 IP 直连与自动发现共用同一 TCP 通道与握手逻辑；未来接入蓝牙
+  Transport 时无需改 SyncService 的连接编排。

@@ -30,9 +30,22 @@ abstract interface class Transport {
 
   Stream<Connection> get onIncoming;
 
+  /// 启动传输：绑定监听（[listenPort] 为 0 表示系统分配）、注册发现服务
+  /// 并开始周期发现。
+  Future<void> start({int listenPort = 0});
+
   Future<void> startDiscovery();
 
   Future<void> stopDiscovery();
 
+  /// 停止传输：关闭监听与发现。
+  Future<void> stop();
+
   Future<Connection> connect(String peerId);
+
+  /// 手动兜底：输入对端 IP 直连（跳过发现，仍走同一通道与同步引擎）。
+  ///
+  /// 局域网/热点场景由 [LanTransport] 支持；蓝牙等通道不支持时抛
+  /// [UnsupportedError]。
+  Future<Connection> connectToHost(String host, int port);
 }

@@ -1,20 +1,34 @@
 import 'dart:io';
 
+import 'package:couple_space/core/crypto/keys.dart';
 import 'package:couple_space/core/storage/database.dart';
 import 'package:couple_space/core/storage/image_files.dart';
 import 'package:couple_space/core/storage/thumbnails.dart';
 import 'package:couple_space/services/note_service.dart';
+import 'package:couple_space/services/sync_service.dart';
 import 'package:drift/drift.dart';
 import 'package:drift/native.dart';
 import 'package:image/image.dart' as img;
+import 'package:couple_space/platform/multicast_lock.dart';
+import 'package:couple_space/platform/permissions.dart';
+
+import 'fake_transport.dart';
 
 /// 测试环境：内存 drift 数据库 + 临时目录（原图/缩略图）+ NoteService。
 class TestEnv {
-  TestEnv({required this.db, required this.temp, required this.service});
+  TestEnv({
+    required this.db,
+    required this.temp,
+    required this.service,
+    required this.identity,
+    required this.imageFiles,
+  });
 
   final AppDatabase db;
   final Directory temp;
   final NoteService service;
+  final IdentityKeys identity;
+  final DiskImageFileStore imageFiles;
   bool _dbClosed = false;
 
   static Future<TestEnv> create({
@@ -31,15 +45,35 @@ class TestEnv {
     final thumbsDir =
         Directory('${temp.path}${Platform.pathSeparator}thumbnails');
     await thumbsDir.create(recursive: true);
+    final imageFiles = DiskImageFileStore(imagesDir);
 
     final service = NoteService(
       db: db,
       identityDeviceId: deviceId,
-      files: DiskImageFileStore(imagesDir),
+      files: imageFiles,
       thumbnails: ThumbnailStore(thumbsDir),
       importer: memoryImporter ? const MemoryLocalImageImporter() : null,
     );
-    return TestEnv(db: db, temp: temp, service: service);
+    final identity = await IdentityKeys.generate(deviceId);
+    return TestEnv(
+      db: db,
+      temp: temp,
+      service: service,
+      identity: identity,
+      imageFiles: imageFiles,
+    );
+  }
+
+  /// 构造未启动的 SyncService（注入假传输/无操作平台通道），供 UI 测试。
+  SyncService createSyncService({FakeTransport? transport}) {
+    return SyncService(
+      db: db,
+      identity: identity,
+      imageFiles: imageFiles,
+      transportFactory: (_, _) => transport ?? FakeTransport(),
+      multicastLock: const NoopMulticastLock(),
+      permissionRequester: const NoopPermissionRequester(),
+    );
   }
 
   /// 生成一张真实小 PNG，作为「已选图片」的源文件。

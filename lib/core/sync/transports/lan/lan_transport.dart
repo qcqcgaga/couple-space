@@ -59,6 +59,7 @@ class LanTransport implements Transport {
   bool get isRunning => _running;
 
   /// 启动传输：绑定 TCP 监听、注册 mDNS 服务、开始周期发现。
+  @override
   Future<void> start({int listenPort = 0}) async {
     if (_running) return;
 
@@ -223,6 +224,7 @@ class LanTransport implements Transport {
   }
 
   /// 通过手动输入的 IP 直连（跳过发现），仍走同一 TCP 通道。
+  @override
   Future<Connection> connectToHost(String host, int port) async {
     final socket = await Socket.connect(host, port);
     return TcpConnection(socket);
@@ -243,6 +245,7 @@ class LanTransport implements Transport {
     _mdns = null;
   }
 
+  @override
   Future<void> stop() async {
     await stopDiscovery();
     _running = false;

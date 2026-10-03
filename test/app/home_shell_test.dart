@@ -1,5 +1,6 @@
 import 'package:couple_space/app/home_shell.dart';
 import 'package:couple_space/app/pages/note_list_page.dart';
+import 'package:couple_space/app/pages/sync_page.dart';
 import 'package:couple_space/app/widgets/month_calendar.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -17,8 +18,9 @@ void main() {
     await env.dispose();
   });
 
-  testWidgets('底部导航在笔记（主）与日历（辅助）之间切换', (tester) async {
-    await tester.pumpWidget(appFor(HomeShell(notes: env.service)));
+  testWidgets('底部导航在笔记（主）、日历（辅助）与同步之间切换', (tester) async {
+    final sync = env.createSyncService();
+    await tester.pumpWidget(appFor(HomeShell(notes: env.service, sync: sync)));
     await tester.pumpAndSettle();
 
     expect(find.byType(NoteListPage), findsOneWidget);
@@ -28,6 +30,11 @@ void main() {
     await tester.tap(find.text('日历'));
     await tester.pumpAndSettle();
     expect(find.byType(MonthCalendar), findsWidgets);
+
+    await tester.tap(find.text('同步'));
+    await tester.pumpAndSettle();
+    expect(find.byType(SyncPage), findsOneWidget);
+    expect(find.text('同步与配对'), findsOneWidget);
 
     await tester.tap(find.text('笔记'));
     await tester.pumpAndSettle();

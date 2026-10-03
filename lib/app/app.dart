@@ -24,7 +24,7 @@ class CoupleSpaceApp extends StatelessWidget {
         GlobalWidgetsLocalizations.delegate,
         GlobalCupertinoLocalizations.delegate,
       ],
-      home: HomeShell(notes: services.notes),
+      home: HomeShell(notes: services.notes, sync: services.sync),
     );
   }
 }
